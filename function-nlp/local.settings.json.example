@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net",
+    "LANGUAGE_ENDPOINT": "https://lang-beacom-prod.cognitiveservices.azure.com/",
+    "LANGUAGE_KEY": "CHANGEZ_MOI",
+    "ANALYSES_API_URL": "http://localhost:8003",
+    "COLLECTE_API_URL": "http://localhost:8002",
+    "INTERNAL_API_KEY": "CHANGEZ_MOI_CLE_INTERNE_ALEATOIRE"
+  }
+}

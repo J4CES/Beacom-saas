@@ -1,0 +1,94 @@
+name: Tests et déploiement Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "service-*/**"
+      - "function-nlp/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    name: Tests et vérification de syntaxe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntaxe Python de tous les services
+        run: python -m compileall -q service-etablissements service-collecte service-analyses service-utilisateurs function-nlp
+      - name: Tests de service-utilisateurs
+        working-directory: service-utilisateurs
+        env:
+          JWT_SECRET: ${{ github.sha }}${{ github.sha }}
+        run: |
+          pip install PyJWT pytest
+          pytest -q tests
+
+  deploy-services:
+    name: Déployer ${{ matrix.service }}
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: service-utilisateurs
+            app: app-beacom-utilisateurs
+            secret: AZURE_PUBLISH_PROFILE_UTILISATEURS
+          - service: service-etablissements
+            app: app-beacom-etablissements
+            secret: AZURE_PUBLISH_PROFILE_ETABLISSEMENTS
+          - service: service-collecte
+            app: app-beacom-collecte
+            secret: AZURE_PUBLISH_PROFILE_COLLECTE
+          - service: service-analyses
+            app: app-beacom-analyses
+            secret: AZURE_PUBLISH_PROFILE_ANALYSES
+    steps:
+      - uses: actions/checkout@v4
+      # Le build des dépendances est fait par Azure (SCM_DO_BUILD_DURING_DEPLOYMENT=true sur l'App Service).
+      - name: Déployer sur Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ matrix.app }}
+          publish-profile: ${{ secrets[matrix.secret] }}
+          package: ./${{ matrix.service }}
+
+  deploy-function:
+    name: Déployer function-nlp
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Déployer sur Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: func-beacom-nlp
+          package: ./function-nlp
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
+
+  verifier:
+    name: Vérification après déploiement
+    needs: [deploy-services]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Appeler /health de chaque service
+        run: |
+          for app in utilisateurs etablissements collecte analyses; do
+            url="https://app-beacom-$app.azurewebsites.net/health"
+            for i in 1 2 3 4 5 6; do
+              if curl -fsS --max-time 15 "$url"; then echo " <- $app OK"; break; fi
+              [ "$i" = 6 ] && { echo "$app ne répond pas"; exit 1; }
+              sleep 20
+            done
+          done

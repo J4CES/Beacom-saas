@@ -47,3 +47,19 @@ def test_ip_client(monkeypatch):
     assert auth.ip_client(requete("1.1.1.1, 203.0.113.5, 10.1.0.4")) == "203.0.113.5"
     assert auth.ip_client(requete("203.0.113.5")) == "203.0.113.5"
     assert auth.ip_client(requete("2001:db8::1")) == "2001:db8::1"
+
+
+def test_route_interne_admins_actifs_de_l_organisation(client):
+    a = client.post(
+        "/auth/inscription", json={"organisation": "Org A", "email": "admin@a.ma", "mot_de_passe": "MotDePasse!123"}
+    ).json()
+    client.post("/auth/inscription", json={"organisation": "Org B", "email": "admin@b.ma", "mot_de_passe": "MotDePasse!123"})
+    h = {"Authorization": "Bearer " + a["access_token"]}
+    for email, role in [("second@a.ma", "admin"), ("gerant@a.ma", "gestionnaire")]:
+        client.post("/utilisateurs", headers=h, json={"email": email, "mot_de_passe": "MotDePasse!123", "role": role})
+    second = [u for u in client.get("/utilisateurs", headers=h).json() if u["email"] == "second@a.ma"][0]
+    client.patch(f"/utilisateurs/{second['id']}", headers=h, json={"actif": False})
+
+    url = f"/interne/organisations/{a['organisation_id']}/admins"
+    assert client.get(url).status_code == 401
+    assert [u["email"] for u in client.get(url, headers=CLE).json()] == ["admin@a.ma"]

@@ -213,3 +213,14 @@ def organisation_interne(organisation_id: int):
     if not org:
         raise HTTPException(404, "Organisation introuvable")
     return org
+
+
+@app.get("/interne/organisations/{organisation_id}/admins", dependencies=[Depends(cle_interne)])
+def admins_interne(organisation_id: int):
+    """Route interne : administrateurs actifs d'une organisation, destinataires des alertes et rapports par e-mail."""
+    with db() as conn:
+        return conn.execute(
+            """SELECT email, nom FROM utilisateurs
+               WHERE organisation_id = %s AND role = 'admin' AND actif ORDER BY id""",
+            (organisation_id,),
+        ).fetchall()

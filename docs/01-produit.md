@@ -27,7 +27,7 @@ ce que les clients apprécient et ce qui les déçoit, établissement par établ
 | 1 | Authentification | `service-utilisateurs` : `POST /auth/login`, jeton JWT |
 | 2 | Gestion des utilisateurs | `service-utilisateurs` : création, rôles, désactivation (admin) |
 | 3 | Fonctionnalité métier principale | Collecte d'avis et analyse de sentiment (`service-collecte`, `function-nlp`) |
-| 4 | Tableau de bord | `GET /analyses/resume` + `frontend-nextjs` (à développer) |
+| 4 | Tableau de bord | `frontend-nextjs` : répartition, évolution, thèmes négatifs, alertes, par établissement |
 | 5 | Gestion des données | Une base PostgreSQL par service |
 | 6 | API backend | 4 API REST FastAPI |
 | 7 | Traitement automatique | `function-nlp`, déclenchée par la file `avis-a-analyser` |
@@ -47,14 +47,14 @@ Priorités MoSCoW : **M** = indispensable pour la démonstration, **S** = souhai
 | E1 | gestionnaire | créer et consulter des établissements | M | API faite |
 | E2 | admin | supprimer un établissement | S | API faite |
 | A1 | gestionnaire | enregistrer un avis pour un établissement | M | API faite |
-| A0 | client d'un café | laisser un avis en scannant un QR code, sans créer de compte | M | API faite (page à faire) |
+| A0 | client d'un café | laisser un avis en scannant un QR code, sans créer de compte | M | Fait (page mobile `/avis/<jeton>`) |
 | A2 | système | analyser chaque avis automatiquement | M | Function faite |
 | A3 | admin | renvoyer les avis dont l'envoi a échoué | S | API faite |
-| D1 | lecteur | voir la répartition des sentiments | M | API faite, écran à faire |
-| D2 | lecteur | filtrer les avis et analyses par établissement | S | API faite (écran à faire) |
+| D1 | lecteur | voir la répartition des sentiments | M | Fait |
+| D2 | lecteur | filtrer les avis et analyses par établissement | S | Fait |
 | D3 | gérant | être alerté d'un avis très négatif (tableau de bord + e-mail) | S | Function et API faites |
-| D4 | gérant | voir l'évolution des sentiments par jour ou par semaine | S | API faite (écran à faire) |
+| D4 | gérant | voir l'évolution des sentiments par jour ou par semaine | S | Fait |
 | D5 | gérant | savoir de quoi se plaignent les clients (mots-clés des avis négatifs) | S | Function et API faites |
 | D6 | gérant | recevoir chaque lundi un rapport de la semaine | S | Function planifiée et API faites |
-| F1 | utilisateur | une interface web pour tout cela | M | À faire (`frontend-nextjs`) |
+| F1 | utilisateur | une interface web pour tout cela | M | Fait (`frontend-nextjs`) |
 | I1 | gestionnaire | importer des avis depuis un fichier CSV | C | API faite |

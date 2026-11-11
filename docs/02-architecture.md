@@ -23,8 +23,10 @@ flowchart LR
 ```
 
 Les services (App Service, PaaS) et la Function (FaaS) tournent hors de la VM. Les quatre bases sont sur la VM Azure (IaaS).
-**API Gateway** : l'architecture du TP en prévoit une. Option économique retenue : les routes serveur de Next.js jouent ce rôle
-(point d'entrée unique, URLs internes cachées). Option production : Azure API Management.
+**API Gateway** : l'architecture du TP en prévoit une. Option économique retenue : les routes serveur de Next.js
+(`frontend-nextjs/src/app/api/...`) jouent ce rôle : point d'entrée unique, URLs des services jamais envoyées au navigateur,
+jeton en cookie HttpOnly, liste blanche des routes relayées (les routes `/interne/...` ne sont jamais joignables), contrôle
+de l'origine des requêtes qui modifient des données. Option production : Azure API Management devant les services.
 
 ## Découpage en microservices
 
@@ -73,7 +75,8 @@ ouverte depuis un lien ou un QR code posé sur la table, permet à un client fin
 
 | De -> vers | Mode | Contenu | Authentification |
 |---|---|---|---|
-| Navigateur -> services | REST, JSON, HTTPS | requêtes métier | jeton JWT (rôle vérifié par chaque service) |
+| Navigateur -> passerelle Next.js | REST, JSON, HTTPS | requêtes métier | cookie HttpOnly contenant le jeton |
+| Passerelle -> services | REST, JSON, HTTPS | requêtes métier relayées | jeton JWT en `Authorization` (rôle vérifié par chaque service) |
 | collecte -> établissements | REST synchrone | existence d'un établissement | jeton JWT de l'utilisateur transmis |
 | collecte -> établissements | REST synchrone | jeton public -> établissement et organisation | clé interne `X-API-Key` |
 | collecte -> utilisateurs | REST synchrone | plan de l'organisation (dépôt public) | clé interne `X-API-Key` |

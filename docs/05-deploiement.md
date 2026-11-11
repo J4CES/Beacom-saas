@@ -98,6 +98,27 @@ appels passent par la passerelle Next.js (frontal App Service du frontend + pass
 | `app-beacom-collecte` | voir ci-dessus |
 | `app-beacom-analyses` | `DATABASE_URL` (db_analyses), `INTERNAL_API_KEY` |
 
+### Frontend (Next.js, Node 20)
+
+Même plan App Service que les API. Le workflow publie un paquet déjà construit (`.next/standalone`) : pas de build côté
+Azure. Les URLs des services ne sont lues que par le serveur Next.js (passerelle `app/api/...`).
+
+```bash
+az webapp create -g $RG -p plan-beacom -n app-beacom-frontend --runtime "NODE:20-lts"
+az webapp update -g $RG -n app-beacom-frontend --https-only true
+az webapp config set -g $RG -n app-beacom-frontend --startup-file "node server.js"
+az webapp config appsettings set -g $RG -n app-beacom-frontend --settings \
+  SCM_DO_BUILD_DURING_DEPLOYMENT=false NODE_ENV=production \
+  UTILISATEURS_API_URL="https://app-beacom-utilisateurs.azurewebsites.net" \
+  ETABLISSEMENTS_API_URL="https://app-beacom-etablissements.azurewebsites.net" \
+  COLLECTE_API_URL="https://app-beacom-collecte.azurewebsites.net" \
+  ANALYSES_API_URL="https://app-beacom-analyses.azurewebsites.net"
+```
+
+Le navigateur ne parle qu'au frontend : `ALLOWED_ORIGINS` des API peut rester vide (pas d'appel direct du navigateur
+vers les services, donc pas de CORS). `PROXIES_DE_CONFIANCE=2` sur les 4 API (frontal App Service + passerelle).
+Cinq applications partagent le plan B1 (1,75 Go de mémoire) : suffisant pour la démonstration.
+
 ## 4. Azure Function (FaaS)
 
 ```bash
@@ -147,7 +168,7 @@ Dans le dépôt : *Settings -> Secrets and variables -> Actions*, ajoutez les pr
 (`az webapp deployment list-publishing-profiles -g $RG -n <app> --xml`) :
 
 `AZURE_PUBLISH_PROFILE_UTILISATEURS`, `AZURE_PUBLISH_PROFILE_ETABLISSEMENTS`, `AZURE_PUBLISH_PROFILE_COLLECTE`,
-`AZURE_PUBLISH_PROFILE_ANALYSES`, `AZURE_FUNCTIONAPP_PUBLISH_PROFILE`.
+`AZURE_PUBLISH_PROFILE_ANALYSES`, `AZURE_PUBLISH_PROFILE_FRONTEND`, `AZURE_FUNCTIONAPP_PUBLISH_PROFILE`.
 
 Protégez la branche `main` (*Settings -> Branches*) : pull request et vérifications obligatoires.
 Les profils de publication sont des secrets : ne les collez jamais ailleurs que dans GitHub.

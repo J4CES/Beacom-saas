@@ -15,6 +15,11 @@ Légende : **Code** = déjà dans le dépôt ; **Azure** = à configurer sur Azu
 
 ## Autres mesures en place
 
+- Interface web : jeton en cookie `HttpOnly`, `Secure`, `SameSite=Lax` (inaccessible au JavaScript de la page, donc à une
+  faille XSS) ; contrôle de l'en-tête `Origin` sur les requêtes qui modifient des données (CSRF) ; passerelle à liste blanche
+  (aucune route interne relayée) ; en-têtes `X-Frame-Options: DENY`, HSTS, `nosniff`. Dépendances de production sans
+  vulnérabilité connue (`npm audit --omit=dev`, vérifié en CI) ; 6 alertes modérées dans les outils de lint, documentées
+  dans `frontend-nextjs/README.md`.
 - Routes publiques (dépôt d'avis, page d'établissement, inscription, connexion) : validation stricte, limitation de débit
   par IP en mémoire (429 + `Retry-After`), champ piège anti-robot sur le dépôt d'avis, réponses sans identifiant interne.
   L'IP client est lue dans `X-Forwarded-For` en remontant de `PROXIES_DE_CONFIANCE` entrées depuis la droite : les

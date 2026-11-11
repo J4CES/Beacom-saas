@@ -7,6 +7,11 @@
     "LANGUAGE_KEY": "CHANGEZ_MOI",
     "ANALYSES_API_URL": "http://localhost:8003",
     "COLLECTE_API_URL": "http://localhost:8002",
-    "INTERNAL_API_KEY": "CHANGEZ_MOI_CLE_INTERNE_ALEATOIRE"
+    "UTILISATEURS_API_URL": "http://localhost:8000",
+    "INTERNAL_API_KEY": "CHANGEZ_MOI_CLE_INTERNE_ALEATOIRE",
+    "SEUIL_ALERTE": "0.8",
+    "ACS_CONNECTION_STRING": "",
+    "ACS_EXPEDITEUR": "",
+    "FRONTEND_URL": "http://localhost:3000"
   }
 }

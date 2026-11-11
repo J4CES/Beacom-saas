@@ -50,14 +50,20 @@ def get_queue() -> QueueClient:
     )
 
 
+COLONNES_MESSAGE = "id, organisation_id, etablissement_id, texte, langue, date_avis"
+
+
 def message_file(avis: dict) -> str:
-    """Message JSON de la file avis-a-analyser. organisation_id suit l'avis jusqu'à service-analyses."""
+    """Message JSON de la file avis-a-analyser. L'organisation et l'établissement suivent l'avis jusqu'à
+    service-analyses ; date_avis permet de dater correctement un avis ancien importé par CSV."""
     return json.dumps(
         {
             "avis_id": avis["id"],
             "organisation_id": avis["organisation_id"],
+            "etablissement_id": avis["etablissement_id"],
             "texte": avis["texte"],
             "langue": avis["langue"],
+            "date_avis": avis["date_avis"].isoformat() if avis["date_avis"] else None,
         },
         ensure_ascii=False,
     )
@@ -190,7 +196,7 @@ def enregistrer_et_publier(org_id: int, plan: str, etab_id: int, avis: list[dict
         lignes = [
             conn.execute(
                 """INSERT INTO avis (organisation_id, etablissement_id, auteur, note, texte, langue, date_avis, source)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, organisation_id, texte, langue""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING """ + COLONNES_MESSAGE,
                 (org_id, etab_id, a.get("auteur"), a.get("note"), a["texte"], a.get("langue"),
                  a.get("date_avis"), a.get("source")),
             ).fetchone()
@@ -341,8 +347,8 @@ def renvoyer_nouveaux(user: dict = Depends(exiger_roles("admin"))):
     envoyes = 0
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
         lignes = conn.execute(
-            """SELECT id, organisation_id, texte, langue FROM avis
-               WHERE statut = 'nouveau' AND organisation_id = %s ORDER BY id""",
+            f"""SELECT {COLONNES_MESSAGE} FROM avis
+                WHERE statut = 'nouveau' AND organisation_id = %s ORDER BY id""",
             (user["organisation_id"],),
         ).fetchall()
         conn.commit()

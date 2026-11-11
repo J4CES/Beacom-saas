@@ -42,7 +42,22 @@ def deposer(client, h, etablissement_id=10, texte="Très bon accueil"):
 def test_message_de_file_porte_l_organisation(client, file):
     r = deposer(client, A)
     assert r.status_code == 201 and r.json()["statut"] == "en_file"
-    assert file.messages == [{"avis_id": r.json()["id"], "organisation_id": 1, "texte": "Très bon accueil", "langue": "fr"}]
+    assert file.messages == [
+        {
+            "avis_id": r.json()["id"],
+            "organisation_id": 1,
+            "etablissement_id": 10,
+            "texte": "Très bon accueil",
+            "langue": "fr",
+            "date_avis": None,
+        }
+    ]
+
+
+def test_message_porte_la_date_d_un_avis_ancien(client, file):
+    corps = {"etablissement_id": 10, "texte": "Bien", "date_avis": "2026-03-01T12:00:00+00:00"}
+    assert client.post("/avis", headers=A, json=corps).status_code == 201
+    assert file.messages[0]["date_avis"].startswith("2026-03-01T12:00:00")
 
 
 def test_organisation_b_ne_voit_pas_les_avis_de_a(client, file):

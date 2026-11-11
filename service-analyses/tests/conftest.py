@@ -36,6 +36,9 @@ def base_neuve():
         conn.execute("DROP SCHEMA public CASCADE")
         conn.execute("CREATE SCHEMA public")
         conn.execute(SCRIPT_SQL.read_text())
+    import auth
+
+    auth.limiteur.reinitialiser()  # la limitation de débit en mémoire ne doit pas fuiter d'un test à l'autre
     yield
 
 

@@ -6,6 +6,11 @@ analyser_avis (trigger : file `avis-a-analyser`)
   Traitement : langue détectée si absente, sentiment et mots-clés (Azure AI Language)
   Sortie     : analyse et mots-clés -> service-analyses ; alerte si l'avis est très négatif (+ e-mail si Azure
                Communication Services est configuré) ; statut 'analyse' -> service-collecte.
+
+rapport_hebdomadaire (trigger : minuteur, chaque lundi à 7 h UTC, soit 8 h au Maroc hors ramadan)
+  Entrée     : aucune (la semaine écoulée)
+  Traitement : service-analyses calcule et enregistre un rapport par organisation active
+  Sortie     : rapports visibles au tableau de bord ; e-mail de synthèse aux admins de chaque organisation
 """
 import html
 import json
@@ -163,3 +168,69 @@ def analyser_avis(msg: func.QueueMessage) -> None:
         signaler(payload, scores.negative, texte)
     _appel_interne("PATCH", _url("COLLECTE_API_URL", f"/avis/{avis_id}/statut"), {"statut": "analyse"})
     logging.info("Avis %s analysé : %s, %d mot(s)-clé(s)", avis_id, resultat.sentiment, len(mots_cles))
+
+
+LIBELLES = {"positive": "positifs", "neutral": "neutres", "negative": "négatifs", "mixed": "mitigés"}
+
+
+def texte_du_rapport(contenu: dict, noms: dict[int, str]) -> str:
+    """Rapport en texte simple, lisible dans n'importe quel client de messagerie."""
+    lignes = [f"Semaine du {contenu['semaine_debut']} au {contenu['semaine_fin']}", ""]
+    lignes.append(f"{contenu['total']} avis analysés (semaine précédente : {contenu['semaine_precedente']['total']})")
+    lignes += [f"  - {n} {LIBELLES[s]}" for s, n in contenu["par_sentiment"].items() if n]
+    part, avant = contenu["part_negative"], contenu["semaine_precedente"]["part_negative"]
+    if part is not None:
+        evolution = "" if avant is None else f" ({(part - avant) * 100:+.0f} points sur une semaine)"
+        lignes.append(f"Part d'avis négatifs : {part:.0%}{evolution}")
+    if contenu["alertes"]:
+        lignes.append(f"Alertes (avis très négatifs) : {contenu['alertes']}")
+    if contenu["themes_negatifs"]:
+        lignes += ["", "Ce qui revient dans les avis négatifs :"]
+        lignes += [f"  - {t['mot_cle']} ({t['total']})" for t in contenu["themes_negatifs"]]
+    if contenu["etablissements"]:
+        lignes += ["", "Par établissement :"]
+        for e in contenu["etablissements"]:
+            nom = noms.get(e["etablissement_id"], f"Établissement n° {e['etablissement_id']}")
+            lignes.append(f"  - {nom} : {e['total']} avis dont {e['negative']} négatif(s)")
+    lien = os.getenv("FRONTEND_URL", "").rstrip("/")
+    if lien:
+        lignes += ["", f"Tableau de bord : {lien}/tableau-de-bord"]
+    return "\n".join(lignes)
+
+
+def noms_des_etablissements(organisation_id: int) -> dict[int, str]:
+    """Noms des établissements (service-etablissements). Facultatif : à défaut, le rapport affiche les numéros."""
+    if not os.getenv("ETABLISSEMENTS_API_URL"):
+        return {}
+    try:
+        liste = _appel_interne(
+            "GET", _url("ETABLISSEMENTS_API_URL", f"/interne/organisations/{organisation_id}/etablissements")
+        )
+        return {e["id"]: e["nom"] for e in liste or []}
+    except Exception:
+        logging.exception("Noms des établissements indisponibles pour l'organisation %s", organisation_id)
+        return {}
+
+
+@app.timer_trigger(arg_name="minuteur", schedule="0 0 7 * * 1", run_on_startup=False)
+def rapport_hebdomadaire(minuteur: func.TimerRequest) -> None:
+    # Si le calcul échoue, l'exception remonte : l'exécution apparaît en échec dans le suivi (et déclenche l'alerte
+    # d'exploitation). Relancer est sans danger : la route remplace les rapports de la semaine.
+    resultat = _appel_interne("POST", _url("ANALYSES_API_URL", "/analyses/interne/rapports-hebdomadaires"))
+    envoyes = 0
+    for rapport in resultat["rapports"]:
+        org = rapport["organisation_id"]
+        # Une organisation en erreur n'empêche pas d'envoyer le rapport des autres.
+        try:
+            admins = []
+            if os.getenv("UTILISATEURS_API_URL"):
+                admins = _appel_interne("GET", _url("UTILISATEURS_API_URL", f"/interne/organisations/{org}/admins")) or []
+            texte = texte_du_rapport(rapport["contenu"], noms_des_etablissements(org))
+            if envoyer_email([a["email"] for a in admins], "Beacom : votre rapport de la semaine", texte):
+                envoyes += 1
+        except Exception:
+            logging.exception("Rapport hebdomadaire non envoyé à l'organisation %s", org)
+    logging.info(
+        "Rapports de la semaine du %s : %d calculé(s), %d envoyé(s) par e-mail",
+        resultat["semaine_debut"], len(resultat["rapports"]), envoyes,
+    )

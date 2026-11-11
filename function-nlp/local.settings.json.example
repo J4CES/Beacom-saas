@@ -8,6 +8,7 @@
     "ANALYSES_API_URL": "http://localhost:8003",
     "COLLECTE_API_URL": "http://localhost:8002",
     "UTILISATEURS_API_URL": "http://localhost:8000",
+    "ETABLISSEMENTS_API_URL": "http://localhost:8001",
     "INTERNAL_API_KEY": "CHANGEZ_MOI_CLE_INTERNE_ALEATOIRE",
     "SEUIL_ALERTE": "0.8",
     "ACS_CONNECTION_STRING": "",

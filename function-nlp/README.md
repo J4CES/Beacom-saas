@@ -1,6 +1,8 @@
 # function-nlp
 
 Azure Functions (Python, plan Consommation) : le traitement automatique et événementiel de la solution.
+Deux Functions dans la même Function App : `analyser_avis` (événement : un message en file) et
+`rapport_hebdomadaire` (exécution planifiée).
 
 ### `analyser_avis` : analyse de chaque avis
 
@@ -11,6 +13,19 @@ Azure Functions (Python, plan Consommation) : le traitement automatique et évé
 | **Traitement** | Détection de langue si absente, analyse de sentiment et extraction des mots-clés (Azure AI Language). Si l'avis est négatif avec un score négatif ≥ `SEUIL_ALERTE` (0,8 par défaut) : alerte |
 | **Résultat** | `POST service-analyses /analyses/interne` (sentiment, scores, mots-clés) ; en cas d'alerte, `POST /analyses/interne/alertes` puis e-mail aux admins de l'organisation (Azure Communication Services, sinon simple journal) ; enfin `PATCH service-collecte /avis/{id}/statut` -> `analyse` |
 | **Pourquoi serverless** | Charge irrégulière par rafales (le midi, le soir, après un import), tâche courte et sans état : on ne paie que l'exécution et la Function monte en charge toute seule |
+
+### `rapport_hebdomadaire` : synthèse du lundi matin
+
+| Point demandé par le TP | Réponse |
+|---|---|
+| **Trigger** | Minuteur (`timer_trigger`), NCRONTAB `0 0 7 * * 1` : chaque lundi à 7 h UTC, soit 8 h au Maroc (7 h pendant le ramadan, quand le Maroc passe à UTC+0). Le plan Consommation Linux ne gère pas les fuseaux horaires |
+| **Données d'entrée** | Aucune : la semaine écoulée (lundi -> dimanche) |
+| **Traitement** | `POST service-analyses /analyses/interne/rapports-hebdomadaires` calcule et enregistre un rapport par organisation active : volume, répartition, part négative et son évolution sur une semaine, thèmes négatifs, alertes, détail par établissement |
+| **Résultat** | Rapports consultables (`GET /analyses/rapports`) ; e-mail de synthèse aux admins de chaque organisation, avec les noms des établissements (`service-etablissements`) |
+| **Pourquoi serverless** | Une exécution de quelques secondes par semaine : une VM ou un App Service allumés en permanence pour cela coûteraient pour rien |
+
+Relancer est sans danger (la route remplace les rapports de la semaine). Une organisation en erreur n'empêche pas
+l'envoi aux autres ; un échec du calcul fait échouer l'exécution, visible dans le suivi de la Function.
 
 ### Alertes et e-mails
 
@@ -55,6 +70,7 @@ func start
 | `AzureWebJobsStorage` | Compte de stockage de la Function et de la file |
 | `LANGUAGE_ENDPOINT`, `LANGUAGE_KEY` | Azure AI Language |
 | `ANALYSES_API_URL`, `COLLECTE_API_URL`, `UTILISATEURS_API_URL` | API des services |
+| `ETABLISSEMENTS_API_URL` | Facultatif : noms des établissements dans le rapport hebdomadaire |
 | `INTERNAL_API_KEY` | Clé interne partagée avec les services |
 | `SEUIL_ALERTE` | Score négatif déclenchant une alerte (0,8 par défaut) |
 | `ACS_CONNECTION_STRING`, `ACS_EXPEDITEUR` | Facultatifs : e-mails par Azure Communication Services |

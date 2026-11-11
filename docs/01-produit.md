@@ -47,10 +47,11 @@ Priorités MoSCoW : **M** = indispensable pour la démonstration, **S** = souhai
 | E1 | gestionnaire | créer et consulter des établissements | M | API faite |
 | E2 | admin | supprimer un établissement | S | API faite |
 | A1 | gestionnaire | enregistrer un avis pour un établissement | M | API faite |
+| A0 | client d'un café | laisser un avis en scannant un QR code, sans créer de compte | M | API faite (page à faire) |
 | A2 | système | analyser chaque avis automatiquement | M | Function faite |
 | A3 | admin | renvoyer les avis dont l'envoi a échoué | S | API faite |
 | D1 | lecteur | voir la répartition des sentiments | M | API faite, écran à faire |
 | D2 | lecteur | filtrer les avis et analyses par établissement | S | À faire |
 | D3 | gérant | être alerté d'un avis négatif | C | À faire (extension de la Function) |
 | F1 | utilisateur | une interface web pour tout cela | M | À faire (`frontend-nextjs`) |
-| I1 | import | importer des avis depuis un fichier CSV | C | À faire |
+| I1 | gestionnaire | importer des avis depuis un fichier CSV | C | API faite |

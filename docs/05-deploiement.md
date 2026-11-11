@@ -25,6 +25,7 @@ le code. Avant la migration multi-clients, laissez la file `avis-a-analyser` se 
 for b in utilisateurs etablissements collecte analyses; do
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_$b -f migrations/001_multi_clients_$b.sql
 done
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_etablissements -f migrations/002_jeton_public_etablissements.sql
 ```
 
 ## 2. Réseau : permettre aux App Service de joindre PostgreSQL
@@ -81,13 +82,17 @@ az webapp config appsettings set -g $RG -n app-beacom-collecte --settings \
   JWT_SECRET="<SECRET_JWT>" INTERNAL_API_KEY="<CLE_INTERNE>" \
   STORAGE_CONNECTION_STRING="<CHAINE_STORAGE>" QUEUE_NAME="avis-a-analyser" \
   ETABLISSEMENTS_API_URL="https://app-beacom-etablissements.azurewebsites.net" \
-  ALLOWED_ORIGINS="https://<URL_FRONTEND>"
+  UTILISATEURS_API_URL="https://app-beacom-utilisateurs.azurewebsites.net" \
+  PROXIES_DE_CONFIANCE=2 ALLOWED_ORIGINS="https://<URL_FRONTEND>"
 ```
 
-| Application | Paramètres propres (en plus de `JWT_SECRET` et `ALLOWED_ORIGINS`) |
+`INTERNAL_API_KEY` est la même valeur dans les 4 services et la Function. `PROXIES_DE_CONFIANCE` vaut `2` quand les
+appels passent par la passerelle Next.js (frontal App Service du frontend + passerelle), `1` sinon.
+
+| Application | Paramètres propres (en plus de `JWT_SECRET`, `ALLOWED_ORIGINS` et `PROXIES_DE_CONFIANCE`) |
 |---|---|
-| `app-beacom-utilisateurs` | `DATABASE_URL` (db_utilisateurs), `JWT_EXPIRE_MINUTES` ; facultatifs, pour un compte de démonstration : `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_ORGANISATION` |
-| `app-beacom-etablissements` | `DATABASE_URL` (db_etablissements) |
+| `app-beacom-utilisateurs` | `DATABASE_URL` (db_utilisateurs), `JWT_EXPIRE_MINUTES`, `INTERNAL_API_KEY` ; facultatifs, pour un compte de démonstration : `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_ORGANISATION` |
+| `app-beacom-etablissements` | `DATABASE_URL` (db_etablissements), `INTERNAL_API_KEY` |
 | `app-beacom-collecte` | voir ci-dessus |
 | `app-beacom-analyses` | `DATABASE_URL` (db_analyses), `INTERNAL_API_KEY` |
 
@@ -144,6 +149,16 @@ curl -s -X POST $C/avis -H "Authorization: Bearer $TOKEN" -H 'Content-Type: appl
 curl -s $A/analyses/avis/1 -H "Authorization: Bearer $TOKEN"
 curl -s $A/analyses/resume -H "Authorization: Bearer $TOKEN"
 curl -s "$C/avis?etablissement_id=1" -H "Authorization: Bearer $TOKEN"   # statut passé à « analyse »
+
+# 4 bis. Dépôt public par un client final, sans compte (jeton_public renvoyé à la création de l'établissement)
+JETON=$(curl -s $E/etablissements/1 -H "Authorization: Bearer $TOKEN" | python3 -c 'import sys,json;print(json.load(sys.stdin)["jeton_public"])')
+curl -s $E/public/etablissements/$JETON
+curl -s -X POST $C/public/avis/$JETON -H 'Content-Type: application/json' \
+  -d '{"texte":"Attente très longue et café froid.","note":1}'
+
+# 4 ter. Import CSV
+printf 'texte;note\nTrès bon accueil;5\nService lent;2\n' > avis.csv
+curl -s -X POST "$C/avis/import?etablissement_id=1" -H "Authorization: Bearer $TOKEN" -F fichier=@avis.csv
 
 # 5. Isolation : un second client ne voit pas les données du premier (404)
 TOKEN2=$(curl -s -X POST $U/auth/inscription -H 'Content-Type: application/json' \

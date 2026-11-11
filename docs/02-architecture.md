@@ -62,12 +62,22 @@ un prototype. Sa limite : une requête oubliant le filtre exposerait des donnée
 chaque service. Alternative pour de gros clients : une base par organisation, ou la sécurité au niveau des lignes
 de PostgreSQL (Row-Level Security).
 
+## Canal de collecte public
+
+Chaque établissement a un **jeton public** aléatoire (32 caractères hexadécimaux, 122 bits) : la page `/avis/<jeton>`,
+ouverte depuis un lien ou un QR code posé sur la table, permet à un client final de laisser un avis sans compte.
+`service-collecte` résout le jeton auprès de `service-etablissements` (route interne), qui reste seul propriétaire de
+`db_etablissements`. Le jeton se régénère si une affiche est détournée. Les avis peuvent aussi arriver par **import CSV**.
+
 ## Communications
 
 | De -> vers | Mode | Contenu | Authentification |
 |---|---|---|---|
 | Navigateur -> services | REST, JSON, HTTPS | requêtes métier | jeton JWT (rôle vérifié par chaque service) |
 | collecte -> établissements | REST synchrone | existence d'un établissement | jeton JWT de l'utilisateur transmis |
+| collecte -> établissements | REST synchrone | jeton public -> établissement et organisation | clé interne `X-API-Key` |
+| collecte -> utilisateurs | REST synchrone | plan de l'organisation (dépôt public) | clé interne `X-API-Key` |
+| client final -> collecte | REST public, sans compte | dépôt d'avis via lien / QR code | jeton public de l'établissement, limitation de débit |
 | collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, texte, langue}` | chaîne de connexion du Storage |
 | Function -> analyses / collecte | REST | résultat, nouveau statut | clé interne `X-API-Key` |
 

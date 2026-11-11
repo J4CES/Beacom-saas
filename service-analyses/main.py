@@ -15,7 +15,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 Sentiment = Literal["positive", "negative", "neutral", "mixed"]
 
 app = FastAPI(title="service-analyses")
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 def db():

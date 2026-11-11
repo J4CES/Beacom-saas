@@ -5,6 +5,7 @@ from test_api import FileFactice
 
 import main
 
+APPEL_GET_REEL = main.appel_get  # avant que la fixture `services` ne le remplace
 JETON = "a" * 32
 ETABLISSEMENTS = {JETON: {"id": 10, "organisation_id": 1, "nom": "Café Atlas"}}
 PLANS = {1: "entreprise", 3: "gratuit"}
@@ -150,3 +151,36 @@ def test_import_au_dela_du_quota(client, file, sql):
     r = importer(client, CSV_OK, h=entete(3, plan="gratuit"))
     assert r.status_code == 402 and "99 déjà collectés" in r.json()["detail"]
     assert sql.execute("SELECT COUNT(*) FROM avis WHERE organisation_id = 3").fetchone() == (99,)
+
+
+
+def test_correlation_propagee_aux_appels_internes_et_a_la_file(client, file, monkeypatch):
+    """Le X-Request-ID de la requête accompagne les appels aux autres services et le message de file."""
+    entetes_vus = []
+
+    class Reponse:
+        def __init__(self, corps):
+            self.corps = corps
+
+        def read(self):
+            return self.corps
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(req, timeout):
+        entetes_vus.append(req.get_header("X-request-id"))
+        if "/par-jeton/" in req.full_url:
+            return Reponse(b'{"id": 10, "organisation_id": 1, "nom": "Atlas"}')
+        return Reponse(b'{"id": 1, "plan": "entreprise"}')
+
+    monkeypatch.setattr(main, "appel_get", APPEL_GET_REEL)
+    monkeypatch.setattr(main.urllib.request, "urlopen", urlopen)
+    r = client.post(f"/public/avis/{JETON}", json={"texte": "Très bon thé", "note": 5},
+                    headers={"X-Request-ID": "passerelle-0001", "X-Forwarded-For": "203.0.113.91"})
+    assert r.status_code == 201 and r.headers["X-Request-ID"] == "passerelle-0001"
+    assert entetes_vus == ["passerelle-0001", "passerelle-0001"]
+    assert file.messages[0]["request_id"] == "passerelle-0001"

@@ -52,7 +52,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="service-utilisateurs", lifespan=lifespan)
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 class LoginIn(BaseModel):

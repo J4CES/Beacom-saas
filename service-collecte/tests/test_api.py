@@ -50,6 +50,7 @@ def test_message_de_file_porte_l_organisation(client, file):
             "texte": "Très bon accueil",
             "langue": "fr",
             "date_avis": None,
+            "request_id": r.headers["X-Request-ID"],
         }
     ]
 

@@ -20,6 +20,8 @@ from auth import (
     bearer,
     cle_interne,
     configurer,
+    entetes_correlation,
+    id_requete,
     exiger_roles,
     limite_du_plan,
     limiter_debit,
@@ -38,7 +40,7 @@ MOTIF_JETON = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 logger = logging.getLogger("collecte")
 app = FastAPI(title="service-collecte")
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 def get_queue() -> QueueClient:
@@ -64,6 +66,8 @@ def message_file(avis: dict) -> str:
             "texte": avis["texte"],
             "langue": avis["langue"],
             "date_avis": avis["date_avis"].isoformat() if avis["date_avis"] else None,
+            # Corrélation : la Function renvoie cet identifiant à chaque service qu'elle appelle.
+            "request_id": id_requete(),
         },
         ensure_ascii=False,
     )
@@ -78,7 +82,8 @@ def marquer_en_file(conn: psycopg.Connection, avis_id: int) -> None:
 def appel_get(url: str, headers: dict, service: str) -> dict:
     """GET synchrone vers un autre service. 404 -> None ; autre erreur -> 502 ; injoignable -> 503."""
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=5) as rep:
+        requete = urllib.request.Request(url, headers={**headers, **entetes_correlation()})
+        with urllib.request.urlopen(requete, timeout=5) as rep:
             return json.loads(rep.read() or b"null")
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

@@ -16,7 +16,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 MOTIF_JETON = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 app = FastAPI(title="service-etablissements")
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 @contextmanager

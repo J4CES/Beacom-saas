@@ -1,17 +1,20 @@
 """Isolation des organisations dans service-analyses."""
+import pytest
 from conftest import CLE, entete
 
 A, B = entete(1), entete(2)
 
 
-def resultat(avis_id, organisation_id, sentiment="positive"):
+def resultat(avis_id, organisation_id, sentiment="positive", etablissement_id=10, **extra):
     return {
         "avis_id": avis_id,
         "organisation_id": organisation_id,
+        "etablissement_id": etablissement_id,
         "sentiment": sentiment,
         "score_positif": 0.9,
         "score_neutre": 0.05,
         "score_negatif": 0.05,
+        **extra,
     }
 
 
@@ -21,9 +24,10 @@ def test_route_interne_protegee_par_cle(client):
     assert client.post("/analyses/interne", headers=CLE, json=resultat(1, 1)).status_code == 201
 
 
-def test_organisation_obligatoire(client):
+@pytest.mark.parametrize("champ", ["organisation_id", "etablissement_id"])
+def test_organisation_et_etablissement_obligatoires(client, champ):
     corps = resultat(1, 1)
-    del corps["organisation_id"]
+    del corps[champ]
     assert client.post("/analyses/interne", headers=CLE, json=corps).status_code == 422
 
 

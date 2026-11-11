@@ -1,5 +1,6 @@
 """Isolation des organisations dans service-analyses."""
 import pytest
+
 from conftest import CLE, entete
 
 A, B = entete(1), entete(2)

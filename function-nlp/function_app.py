@@ -12,13 +12,12 @@ rapport_hebdomadaire (trigger : minuteur, chaque lundi à 7 h UTC, soit 8 h au M
   Traitement : service-analyses calcule et enregistre un rapport par organisation active
   Sortie     : rapports visibles au tableau de bord ; e-mail de synthèse aux admins de chaque organisation
 """
+import contextvars
 import html
 import json
 import logging
 import os
 import urllib.request
-
-import contextvars
 
 import azure.functions as func
 from azure.ai.textanalytics import TextAnalyticsClient
@@ -152,7 +151,8 @@ def analyser_avis(msg: func.QueueMessage) -> None:
         raise RuntimeError(f"Azure AI Language a échoué pour l'avis {avis_id}: {resultat.error}")
 
     phrases = client.extract_key_phrases(documents=[texte], language=langue)[0]
-    # Les mots-clés enrichissent le tableau de bord sans être indispensables : une erreur ici n'en est pas une pour l'avis.
+    # Les mots-clés enrichissent le tableau de bord sans être indispensables :
+    # une erreur ici n'en est pas une pour l'avis.
     mots_cles = [] if phrases.is_error else list(phrases.key_phrases)[:30]
     if phrases.is_error:
         logging.warning("Mots-clés indisponibles pour l'avis %s : %s", avis_id, phrases.error)
@@ -237,7 +237,8 @@ def rapport_hebdomadaire(minuteur: func.TimerRequest) -> None:
         try:
             admins = []
             if os.getenv("UTILISATEURS_API_URL"):
-                admins = _appel_interne("GET", _url("UTILISATEURS_API_URL", f"/interne/organisations/{org}/admins")) or []
+                url_admins = _url("UTILISATEURS_API_URL", f"/interne/organisations/{org}/admins")
+                admins = _appel_interne("GET", url_admins) or []
             texte = texte_du_rapport(rapport["contenu"], noms_des_etablissements(org))
             if envoyer_email([a["email"] for a in admins], "Beacom : votre rapport de la semaine", texte):
                 envoyes += 1

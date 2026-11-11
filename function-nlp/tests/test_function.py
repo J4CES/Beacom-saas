@@ -75,9 +75,9 @@ def emails(monkeypatch):
 
 
 def langue(monkeypatch, **options):
-    l = LangueFactice(**options)
-    monkeypatch.setattr(function_app, "_language_client", lambda: l)
-    return l
+    client = LangueFactice(**options)
+    monkeypatch.setattr(function_app, "_language_client", lambda: client)
+    return client
 
 
 def message(**corps):
@@ -149,9 +149,9 @@ def test_mots_cles_indisponibles_n_empechent_pas_l_analyse(monkeypatch, services
 
 
 def test_langue_detectee_si_absente(monkeypatch, services, emails):
-    l = langue(monkeypatch, sentiment="positive", negatif=0.0)
+    client = langue(monkeypatch, sentiment="positive", negatif=0.0)
     analyser_avis(message(langue=None))
-    assert l.langues == ["fr"]
+    assert client.langues == ["fr"]
 
 
 @pytest.mark.parametrize("manquant", ["organisation_id", "etablissement_id"])

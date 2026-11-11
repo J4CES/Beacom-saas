@@ -36,7 +36,8 @@ class AnalyseIn(BaseModel):
     @field_validator("mots_cles")
     @classmethod
     def nettoyer(cls, mots: list[str]) -> list[str]:
-        """Minuscules, espaces normalisés, sans doublon, 200 caractères au plus : « Service » et « service » comptent ensemble."""
+        """Minuscules, espaces normalisés, sans doublon, 200 caractères au plus.
+        « Service » et « service » comptent ensemble."""
         vus: dict[str, None] = {}
         for mot in mots:
             mot = " ".join(mot.split()).lower()[:200]

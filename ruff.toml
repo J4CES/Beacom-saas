@@ -1,0 +1,16 @@
+# Lint Python (ruff) : erreurs, avertissements, pyflakes et ordre des imports.
+line-length = 120
+target-version = "py311"
+
+[lint]
+select = ["E", "W", "F", "I", "B"]
+ignore = [
+  "B008",  # Depends(...) dans les signatures : idiome FastAPI
+  "B904",  # raise HTTPException(...) dans un except : le message client suffit, la cause est journalisée
+]
+
+[lint.isort]
+known-first-party = ["auth", "main", "security", "conftest", "function_app", "test_api", "test_function", "test_tableau_de_bord"]
+
+[lint.per-file-ignores]
+"**/tests/**" = ["E501"]

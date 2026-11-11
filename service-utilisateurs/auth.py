@@ -13,9 +13,8 @@ import time
 import uuid
 from collections import deque
 
-import psycopg
-
 import jwt
+import psycopg
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

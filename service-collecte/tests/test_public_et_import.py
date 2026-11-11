@@ -1,9 +1,9 @@
 """Dépôt d'avis public (lien / QR code) et import CSV dans service-collecte."""
 import pytest
-from conftest import entete
-from test_api import FileFactice
 
 import main
+from conftest import entete
+from test_api import FileFactice
 
 APPEL_GET_REEL = main.appel_get  # avant que la fixture `services` ne le remplace
 JETON = "a" * 32

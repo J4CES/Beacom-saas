@@ -1,5 +1,6 @@
 """Inscription, connexion et isolation des organisations dans service-utilisateurs."""
 import jwt
+
 from conftest import JWT_SECRET, entete
 
 

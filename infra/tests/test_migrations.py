@@ -67,3 +67,19 @@ def test_source_id_unique_par_organisation_apres_migration():
         c.execute("INSERT INTO etablissements (organisation_id, nom, source_id) VALUES (1, 'a', 'g'), (2, 'b', 'g')")
         with pytest.raises(psycopg.errors.UniqueViolation):
             c.execute("INSERT INTO etablissements (organisation_id, nom, source_id) VALUES (1, 'c', 'g')")
+
+
+def test_migration_002_jeton_public():
+    url = base_vide("test_migration_002")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "01_etablissements.sql").read_text())
+        c.execute("INSERT INTO etablissements (nom) VALUES ('a'), ('b'), ('c')")
+        for _ in range(2):
+            c.execute((SQL / "migrations" / "001_multi_clients_etablissements.sql").read_text())
+            c.execute((SQL / "migrations" / "002_jeton_public_etablissements.sql").read_text())
+        jetons = [j for (j,) in c.execute("SELECT jeton_public FROM etablissements").fetchall()]
+        assert len(set(jetons)) == 3 and all(len(j) == 32 for j in jetons)
+        neuve = base_vide("test_neuve_002")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "01_etablissements.sql").read_text())
+        c.execute((SQL / "migrations" / "002_jeton_public_etablissements.sql").read_text())

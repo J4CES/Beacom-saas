@@ -195,3 +195,26 @@ def test_email_par_acs(monkeypatch):
     assert function_app.envoyer_email(["a@b.ma"], "Sujet", "<script>") is True
     assert envoyes[0]["recipients"] == {"to": [{"address": "a@b.ma"}]}
     assert "&lt;script&gt;" in envoyes[0]["content"]["html"]
+
+
+def test_identifiant_de_correlation_transmis_aux_services(monkeypatch, emails):
+    langue(monkeypatch, sentiment="positive", negatif=0.0)
+    vus = []
+
+    class Reponse:
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(req, timeout):
+        vus.append(req.get_header("X-request-id"))
+        return Reponse()
+
+    monkeypatch.setattr(function_app.urllib.request, "urlopen", urlopen)
+    analyser_avis(message(request_id="passerelle-0002"))
+    assert vus == ["passerelle-0002", "passerelle-0002"]  # analyse puis statut

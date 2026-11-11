@@ -75,4 +75,5 @@ func start
 | `SEUIL_ALERTE` | Score négatif déclenchant une alerte (0,8 par défaut) |
 | `ACS_CONNECTION_STRING`, `ACS_EXPEDITEUR` | Facultatifs : e-mails par Azure Communication Services |
 | `FRONTEND_URL` | Facultatif : lien vers le tableau de bord dans les e-mails |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Facultatif : télémétrie Application Insights (voir `docs/06-observabilite.md`) |
 En production, ce sont des paramètres d'application de la Function App (jamais dans le dépôt).

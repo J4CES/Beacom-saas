@@ -18,11 +18,16 @@ import logging
 import os
 import urllib.request
 
+import contextvars
+
 import azure.functions as func
 from azure.ai.textanalytics import TextAnalyticsClient
 from azure.core.credentials import AzureKeyCredential
 
 app = func.FunctionApp()
+
+# Identifiant de corrélation venu du message de file (X-Request-ID de la requête d'origine).
+_id_requete: contextvars.ContextVar[str | None] = contextvars.ContextVar("id_requete", default=None)
 
 
 def _language_client() -> TextAnalyticsClient:
@@ -39,11 +44,14 @@ def _url(variable: str, chemin: str) -> str:
 def _appel_interne(methode: str, url: str, corps: dict | None = None):
     """Appel HTTP authentifié par clé interne, réponse JSON décodée.
     Toute erreur HTTP lève une exception : le message est réessayé, puis isolé en poison queue."""
+    entetes = {"Content-Type": "application/json", "X-API-Key": os.environ["INTERNAL_API_KEY"]}
+    if _id_requete.get():
+        entetes["X-Request-ID"] = _id_requete.get()
     req = urllib.request.Request(
         url,
         data=json.dumps(corps).encode() if corps is not None else None,
         method=methode,
-        headers={"Content-Type": "application/json", "X-API-Key": os.environ["INTERNAL_API_KEY"]},
+        headers=entetes,
     )
     with urllib.request.urlopen(req, timeout=15) as reponse:
         contenu = reponse.read()
@@ -121,6 +129,8 @@ def signaler(payload: dict, score_negatif: float, texte: str) -> None:
 @app.queue_trigger(arg_name="msg", queue_name="avis-a-analyser", connection="AzureWebJobsStorage")
 def analyser_avis(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
+    # Corrélation : on reprend l'identifiant de la requête d'origine, ou celui du message de file.
+    _id_requete.set(str(payload.get("request_id") or msg.id or "")[:64] or None)
     avis_id = payload["avis_id"]
     # Un message sans organisation ni établissement (ancien format) lève KeyError : il part en poison queue.
     organisation_id = payload["organisation_id"]
@@ -167,7 +177,10 @@ def analyser_avis(msg: func.QueueMessage) -> None:
     if resultat.sentiment == "negative" and scores.negative >= _seuil_alerte():
         signaler(payload, scores.negative, texte)
     _appel_interne("PATCH", _url("COLLECTE_API_URL", f"/avis/{avis_id}/statut"), {"statut": "analyse"})
-    logging.info("Avis %s analysé : %s, %d mot(s)-clé(s)", avis_id, resultat.sentiment, len(mots_cles))
+    logging.info(
+        "Avis %s analysé : %s, %d mot(s)-clé(s) [request_id=%s]",
+        avis_id, resultat.sentiment, len(mots_cles), _id_requete.get(),
+    )
 
 
 LIBELLES = {"positive": "positifs", "neutral": "neutres", "negative": "négatifs", "mixed": "mitigés"}

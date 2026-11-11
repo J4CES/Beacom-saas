@@ -82,8 +82,12 @@ Sur Azure, les App Service joignent la VM par son adresse privée via l'intégra
 Aucun secret dans le dépôt : `.env`, `local.settings.json` et les profils de publication sont ignorés ou stockés dans les
 paramètres Azure / secrets GitHub. Si un secret est commité par erreur, renouvelez-le.
 
+## Contribuer
+
+Voir [CONTRIBUTING.md](CONTRIBUTING.md) : une branche par fonctionnalité, PR relue, `main` protégée.
+
 ## CI/CD
 
-`.github/workflows/deploy.yml` : sur chaque pull request, tests contre PostgreSQL et lint, types, build et audit du frontend ;
+`.github/workflows/deploy.yml` : sur chaque pull request, ruff, tests contre PostgreSQL et lint, types, build et audit du frontend ;
 à chaque push sur `main`, les mêmes contrôles puis le déploiement des 4 services, de la Function et du frontend, puis la
 vérification de `/health` et de la page de connexion.

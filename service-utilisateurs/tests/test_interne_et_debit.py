@@ -1,9 +1,8 @@
 """Route interne des organisations, limitation de débit et calcul de l'IP client."""
 from types import SimpleNamespace
 
-from conftest import CLE, entete
-
 import auth
+from conftest import CLE, entete
 
 
 def test_route_interne_organisation(client):

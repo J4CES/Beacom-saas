@@ -2,9 +2,9 @@
 import os
 
 import pytest
-from test_function import Services
 
 import function_app
+from test_function import Services
 
 rapport_hebdomadaire = function_app.rapport_hebdomadaire.build().get_user_function()
 

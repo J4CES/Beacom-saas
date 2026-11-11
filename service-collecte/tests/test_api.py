@@ -6,9 +6,9 @@ import urllib.error
 
 import psycopg
 import pytest
-from conftest import CLE, entete
 
 import main
+from conftest import CLE, entete
 
 A, B = entete(1), entete(2)
 

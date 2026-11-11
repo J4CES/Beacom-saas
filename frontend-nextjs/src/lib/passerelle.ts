@@ -71,6 +71,11 @@ export async function relayer(
   if (type) entetes.set("content-type", type);
   const xff = req.headers.get("x-forwarded-for");
   if (xff) entetes.set("x-forwarded-for", xff);
+  // Corrélation : un identifiant par requête, suivi par les services, la file et la Function (voir docs/06-observabilite.md).
+  const idRequete = /^[A-Za-z0-9._-]{8,64}$/.test(req.headers.get("x-request-id") ?? "")
+    ? req.headers.get("x-request-id")!
+    : crypto.randomUUID();
+  entetes.set("x-request-id", idRequete);
   if (avecJeton) {
     const jeton = req.cookies.get(COOKIE_JETON)?.value;
     if (!jeton) return erreur(401, "Authentification requise");
@@ -90,7 +95,10 @@ export async function relayer(
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    return erreur(503, "Service momentanément indisponible, réessayez dans un instant");
+    console.error(`[${idRequete}] ${service} injoignable`);
+    const indisponible = erreur(503, "Service momentanément indisponible, réessayez dans un instant");
+    indisponible.headers.set("x-request-id", idRequete);
+    return indisponible;
   }
 
   const contenu = reponse.status === 204 ? null : await reponse.arrayBuffer();
@@ -98,6 +106,7 @@ export async function relayer(
     status: reponse.status,
     headers: { "content-type": reponse.headers.get("content-type") ?? "application/json" },
   });
+  sortie.headers.set("x-request-id", idRequete);
   const attente = reponse.headers.get("retry-after");
   if (attente) sortie.headers.set("retry-after", attente);
   // Jeton expiré ou invalide : on l'efface, le navigateur sera renvoyé vers la connexion.

@@ -4,7 +4,6 @@ import sys
 import jwt
 import pytest
 
-os.environ.setdefault("JWT_SECRET", "x" * 40)
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import security  # noqa: E402
@@ -28,22 +27,24 @@ def test_hash_malformé_refusé():
 
 
 def test_jeton_contient_role_et_expiration():
-    jeton, duree = security.creer_jeton(7, "a@b.fr", "gestionnaire", minutes=5)
+    jeton, duree = security.creer_jeton(7, "a@b.fr", "gestionnaire", 3, "pro", minutes=5)
     payload = jwt.decode(jeton, os.environ["JWT_SECRET"], algorithms=["HS256"])
     assert payload["sub"] == "7"
     assert payload["role"] == "gestionnaire"
+    assert payload["org"] == 3
+    assert payload["plan"] == "pro"
     assert duree == 300
     assert payload["exp"] - payload["iat"] == 300
 
 
 def test_jeton_expire_refusé():
-    jeton, _ = security.creer_jeton(1, "a@b.fr", "lecteur", minutes=-1)
+    jeton, _ = security.creer_jeton(1, "a@b.fr", "lecteur", 1, "gratuit", minutes=-1)
     with pytest.raises(jwt.ExpiredSignatureError):
         jwt.decode(jeton, os.environ["JWT_SECRET"], algorithms=["HS256"])
 
 
 def test_mauvaise_clé_refusée():
-    jeton, _ = security.creer_jeton(1, "a@b.fr", "lecteur")
+    jeton, _ = security.creer_jeton(1, "a@b.fr", "lecteur", 1, "gratuit")
     with pytest.raises(jwt.InvalidSignatureError):
         jwt.decode(jeton, "y" * 40, algorithms=["HS256"])
 
@@ -51,4 +52,4 @@ def test_mauvaise_clé_refusée():
 def test_secret_trop_court_refusé(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "court")
     with pytest.raises(RuntimeError):
-        security.creer_jeton(1, "a@b.fr", "lecteur")
+        security.creer_jeton(1, "a@b.fr", "lecteur", 1, "gratuit")

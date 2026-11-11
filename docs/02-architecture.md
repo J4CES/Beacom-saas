@@ -40,18 +40,41 @@ Les services (App Service, PaaS) et la Function (FaaS) tournent hors de la VM. L
 l'identité change peu et doit être très sécurisée ; les établissements sont un référentiel stable ; la collecte reçoit des écritures
 fréquentes ; les analyses sont surtout lues. Chaque base n'est accessible que par son service.
 
+## Multi-clients (SaaS)
+
+Beacom sert plusieurs clients avec une seule installation. Un client est une **organisation** :
+
+| Élément | Choix |
+|---|---|
+| Création | `POST /auth/inscription` (public) crée l'organisation au plan `gratuit` et son premier administrateur |
+| Identification | Le jeton JWT porte `org` (identifiant d'organisation) et `plan` ; `utilisateur_courant` (`auth.py`) les renvoie |
+| Isolation | Colonne `organisation_id NOT NULL` dans `utilisateurs`, `etablissements`, `avis` et `analyses_sentiment`. Chaque requête SQL filtre dessus, la valeur venant toujours du jeton, jamais de la requête |
+| Ressource d'un autre client | **404**, comme une ressource inexistante : on ne révèle pas qu'elle existe |
+| Propagation asynchrone | `organisation_id` voyage dans le message de file ; la Function le transmet à `service-analyses` |
+| Plans | `gratuit` : 1 établissement et 100 avis par mois ; `pro` : 5 établissements ; `entreprise` : illimité. Dépassement refusé en **402** avec un message explicite |
+
+Les limites sont définies une seule fois, dans `LIMITES_PLANS` (`auth.py`, identique dans les 4 services). Le plan étant
+dans le jeton, un changement de plan s'applique à la reconnexion (1 h au plus). Le changement de plan
+(`PATCH /organisations/moi`) simule l'abonnement : le prototype n'intègre pas de paiement.
+
+Modèle retenu : **base partagée, isolation par colonne**. C'est le plus économique et le plus simple à exploiter pour
+un prototype. Sa limite : une requête oubliant le filtre exposerait des données, d'où les tests d'isolation dans
+chaque service. Alternative pour de gros clients : une base par organisation, ou la sécurité au niveau des lignes
+de PostgreSQL (Row-Level Security).
+
 ## Communications
 
 | De -> vers | Mode | Contenu | Authentification |
 |---|---|---|---|
 | Navigateur -> services | REST, JSON, HTTPS | requêtes métier | jeton JWT (rôle vérifié par chaque service) |
 | collecte -> établissements | REST synchrone | existence d'un établissement | jeton JWT de l'utilisateur transmis |
-| collecte -> Function | file de messages (asynchrone) | `{avis_id, texte, langue}` | chaîne de connexion du Storage |
+| collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, texte, langue}` | chaîne de connexion du Storage |
 | Function -> analyses / collecte | REST | résultat, nouveau statut | clé interne `X-API-Key` |
 
 Gestion des erreurs : codes HTTP explicites (401, 403, 404, 409, 422, 502, 503). Reprises : la file réessaie 5 fois puis isole le
 message en poison queue ; les écritures de la Function sont idempotentes ; `POST /avis/renvoyer-nouveaux` rattrape les avis
-dont l'envoi en file a échoué.
+dont l'envoi en file a échoué. `service-collecte` valide l'avis en base **avant** de l'envoyer en file : la Function
+le trouve donc toujours, et le statut `analyse` qu'elle pose n'est jamais écrasé par `en_file`.
 
 ## IaaS : la machine virtuelle
 
@@ -87,7 +110,8 @@ Voir `function-nlp/README.md` (trigger, entrée, traitement, résultat, raison d
 | Technologie | PostgreSQL 14, une base par service |
 | Chaînes de connexion | Paramètres d'application Azure ; en local, fichier `.env` ignoré par Git |
 | Sauvegarde | `pg_dump` quotidien de chaque base vers un conteneur Blob du Storage Account (cron sur la VM), plus instantané de disque avant changement majeur |
-| Données sensibles | Adresses e-mail et empreintes de mots de passe (`db_utilisateurs`) ; contenu des avis |
+| Données sensibles | Adresses e-mail et empreintes de mots de passe (`db_utilisateurs`) ; contenu des avis ; séparation des données entre clients |
+| Évolutions du schéma | Scripts de création à jour + migrations idempotentes dans `infra/sql/migrations/`, testées sur l'ancien schéma |
 | Validation | Modèles Pydantic (longueurs, bornes, formats) + contraintes SQL (`CHECK`, `UNIQUE`) |
 | Erreurs de connexion | Exceptions journalisées, réponse 5xx, aucune information interne exposée au client |
 

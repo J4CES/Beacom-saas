@@ -4,8 +4,10 @@ Authentification et gestion des utilisateurs (base `db_utilisateurs`). C'est le 
 et qui émet des jetons JWT. Les autres services vérifient ces jetons avec le même `JWT_SECRET`.
 
 - Mots de passe hachés avec scrypt (jamais stockés en clair)
-- Rôles : `admin`, `gestionnaire`, `lecteur`
-- L'administrateur initial est créé au démarrage depuis `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+- Multi-clients : chaque utilisateur appartient à une **organisation** (un client de Beacom) qui a un **plan**
+  (`gratuit`, `pro`, `entreprise`). Le jeton JWT porte `org` et `plan` ; les autres services filtrent dessus.
+- Rôles : `admin`, `gestionnaire`, `lecteur`, valables dans l'organisation seulement
+- Compte de démonstration facultatif créé au démarrage depuis `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_ORGANISATION`
 
 ## Lancer en local
 
@@ -21,19 +23,19 @@ uvicorn main:app --reload --port 8000
 
 | Route | Accès |
 |---|---|
-| `POST /auth/login` | public : `{email, mot_de_passe}` -> `{access_token, role, expires_in}` |
+| `POST /auth/inscription` | public : `{organisation, nom?, email, mot_de_passe}` -> crée l'organisation (plan gratuit) et son admin, renvoie un jeton |
+| `POST /auth/login` | public : `{email, mot_de_passe}` -> `{access_token, role, organisation_id, plan, expires_in}` |
 | `GET /me` | utilisateur connecté |
-| `POST /utilisateurs` | admin |
-| `GET /utilisateurs` | admin |
-| `PATCH /utilisateurs/{id}` | admin : changer le rôle ou désactiver un compte |
+| `GET /organisations/moi` | utilisateur connecté : organisation, plan et limites |
+| `PATCH /organisations/moi` | admin : renommer, changer de plan (simulation d'abonnement, sans paiement) |
+| `POST /utilisateurs` | admin : crée un compte dans **son** organisation |
+| `GET /utilisateurs` | admin : comptes de son organisation |
+| `PATCH /utilisateurs/{id}` | admin : rôle ou désactivation, dans son organisation (404 sinon) |
 | `GET /health` | public |
 
 ## Tests
 
-```bash
-pip install pytest
-pytest tests
-```
+Depuis la racine du dépôt : `./scripts/lancer-tests.sh utilisateurs` (PostgreSQL et Python dans Docker).
 
 ## Note
 

@@ -16,6 +16,19 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = "HS256"
 
+# Limites d'usage par plan d'abonnement (None = illimité). Le plan voyage dans le jeton JWT.
+LIMITES_PLANS: dict[str, dict[str, int | None]] = {
+    "gratuit": {"etablissements": 1, "avis_par_mois": 100},
+    "pro": {"etablissements": 5, "avis_par_mois": None},
+    "entreprise": {"etablissements": None, "avis_par_mois": None},
+}
+
+
+def limite_du_plan(plan: str, ressource: str) -> int | None:
+    """Limite du plan pour une ressource. Un plan inconnu reçoit les limites du plan gratuit."""
+    return LIMITES_PLANS.get(plan, LIMITES_PLANS["gratuit"])[ressource]
+
+
 bearer = HTTPBearer(auto_error=False)
 access_log = logging.getLogger("access")
 
@@ -28,13 +41,21 @@ def utilisateur_courant(creds: HTTPAuthorizationCredentials | None = Depends(bea
             creds.credentials,
             JWT_SECRET,
             algorithms=[JWT_ALGORITHM],
-            options={"require": ["exp", "sub"]},
+            options={"require": ["exp", "sub", "org"]},
         )
+        organisation_id = int(payload["org"])
     except jwt.ExpiredSignatureError:
         raise HTTPException(401, "Jeton expiré", headers={"WWW-Authenticate": "Bearer"})
-    except jwt.InvalidTokenError:
+    except (jwt.InvalidTokenError, TypeError, ValueError):
         raise HTTPException(401, "Jeton invalide", headers={"WWW-Authenticate": "Bearer"})
-    return {"id": int(payload["sub"]), "email": payload.get("email"), "role": payload.get("role")}
+    # organisation_id isole les clients : chaque service filtre toutes ses requêtes dessus.
+    return {
+        "id": int(payload["sub"]),
+        "email": payload.get("email"),
+        "role": payload.get("role"),
+        "organisation_id": organisation_id,
+        "plan": payload.get("plan", "gratuit"),
+    }
 
 
 def exiger_roles(*roles: str):

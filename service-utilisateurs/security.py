@@ -46,14 +46,26 @@ def verifier_mot_de_passe(mot_de_passe: str, stocke: str) -> bool:
     return hmac.compare_digest(calcule, attendu)
 
 
-def creer_jeton(user_id: int, email: str, role: str, minutes: int | None = None) -> tuple[str, int]:
-    """Retourne (jeton, durée de validité en secondes)."""
+def creer_jeton(
+    user_id: int,
+    email: str,
+    role: str,
+    organisation_id: int,
+    plan: str,
+    minutes: int | None = None,
+) -> tuple[str, int]:
+    """Retourne (jeton, durée de validité en secondes).
+
+    Le jeton porte l'organisation et son plan : un changement de plan s'applique à l'expiration du jeton.
+    """
     minutes = minutes or int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
     maintenant = int(time.time())
     payload = {
         "sub": str(user_id),
         "email": email,
         "role": role,
+        "org": organisation_id,
+        "plan": plan,
         "iat": maintenant,
         "exp": maintenant + minutes * 60,
     }

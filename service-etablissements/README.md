@@ -18,8 +18,14 @@ Documentation interactive : http://localhost:8001/docs
 
 | Route | Accès (jeton JWT `Authorization: Bearer ...`) |
 |---|---|
-| `POST /etablissements` | admin, gestionnaire |
+| `POST /etablissements` | admin, gestionnaire ; 402 si la limite du plan est atteinte |
 | `GET /etablissements?ville=&limit=&offset=` | tout utilisateur connecté |
 | `GET /etablissements/{id}` | tout utilisateur connecté |
 | `DELETE /etablissements/{id}` | admin |
+
+Toutes les routes sont limitées à l'organisation du jeton : un établissement d'un autre client répond 404.
+Limites : plan `gratuit` 1 établissement, `pro` 5, `entreprise` illimité (`LIMITES_PLANS` dans `auth.py`).
+`source_id` est unique par organisation.
+
+Tests : `./scripts/lancer-tests.sh etablissements` depuis la racine du dépôt.
 | `GET /health` | public |

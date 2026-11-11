@@ -6,7 +6,12 @@ on:
     paths:
       - "service-*/**"
       - "function-nlp/**"
+      - "infra/**"
+      - "requirements-dev.txt"
       - ".github/workflows/deploy.yml"
+  # Les tests tournent sur chaque pull request ; le déploiement, seulement après fusion dans main.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -15,26 +20,45 @@ concurrency:
 
 jobs:
   tests:
-    name: Tests et vérification de syntaxe
+    name: Tests (PostgreSQL réel)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14-alpine
+        env:
+          POSTGRES_USER: beacom
+          POSTGRES_PASSWORD: beacom
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U beacom" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_PG_ADMIN_URL: postgresql://beacom:beacom@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Syntaxe Python de tous les services
         run: python -m compileall -q service-etablissements service-collecte service-analyses service-utilisateurs function-nlp
-      - name: Tests de service-utilisateurs
-        working-directory: service-utilisateurs
-        env:
-          JWT_SECRET: ${{ github.sha }}${{ github.sha }}
+      - name: Dépendances
         run: |
-          pip install PyJWT pytest
-          pytest -q tests
+          pip install -r requirements-dev.txt -r service-utilisateurs/requirements.txt \
+            -r service-collecte/requirements.txt -r function-nlp/requirements.txt
+      - name: auth.py identique dans les 4 services
+        run: test "$(md5sum service-*/auth.py | cut -d' ' -f1 | sort -u | wc -l)" = 1
+      - name: Tests
+        run: |
+          for d in service-utilisateurs service-etablissements service-collecte service-analyses infra function-nlp; do
+            echo "::group::$d"
+            (cd "$d" && python -m pytest -q tests)
+            echo "::endgroup::"
+          done
 
   deploy-services:
     name: Déployer ${{ matrix.service }}
     needs: tests
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -65,6 +89,7 @@ jobs:
   deploy-function:
     name: Déployer function-nlp
     needs: tests
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

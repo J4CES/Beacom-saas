@@ -38,9 +38,12 @@ Priorités MoSCoW : **M** = indispensable pour la démonstration, **S** = souhai
 
 | Id | En tant que... | Je veux... | Priorité | État |
 |---|---|---|---|---|
+| U0 | nouveau client | créer mon organisation et mon compte en libre-service | M | API faite |
 | U1 | utilisateur | me connecter avec e-mail et mot de passe | M | API faite |
 | U2 | admin | créer des comptes et leur donner un rôle | M | API faite |
 | U3 | admin | désactiver un compte | S | API faite |
+| U4 | client | ne jamais voir les données d'un autre client | M | API faite, testée |
+| U5 | admin | changer le plan de mon organisation (gratuit, pro, entreprise) | S | API faite (sans paiement) |
 | E1 | gestionnaire | créer et consulter des établissements | M | API faite |
 | E2 | admin | supprimer un établissement | S | API faite |
 | A1 | gestionnaire | enregistrer un avis pour un établissement | M | API faite |

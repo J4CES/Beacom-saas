@@ -6,7 +6,7 @@ Légende : **Code** = déjà dans le dépôt ; **Azure** = à configurer sur Azu
 |---|---|---|---|---|
 | 1 | HTTPS | `--https-only` sur les App Service ; HTTPS natif de la Function | Azure | Le trafic App Service -> VM (5432) reste en clair dans le réseau virtuel privé : activer SSL PostgreSQL en production |
 | 2 | Authentification | Connexion e-mail + mot de passe, jeton JWT signé (HS256) d'une heure ; mots de passe hachés avec scrypt et sel | Code | Pas de limitation du nombre d'essais, ni de double authentification, ni de jeton de rafraîchissement |
-| 3 | Autorisation par rôles | `admin`, `gestionnaire`, `lecteur` vérifiés par chaque service (`exiger_roles`) | Code | Les rôles sont dans le jeton : un rôle retiré ne s'applique qu'à son expiration (1 h maximum) |
+| 3 | Autorisation par rôles | `admin`, `gestionnaire`, `lecteur` vérifiés par chaque service (`exiger_roles`), **dans l'organisation du jeton** : chaque requête SQL filtre sur `organisation_id`, testé dans chaque service | Code | Les rôles et le plan sont dans le jeton : un rôle retiré ou un plan changé ne s'applique qu'à son expiration (1 h maximum) |
 | 4 | Protection des secrets | Paramètres d'application Azure, secrets GitHub, `.env` et `local.settings.json` ignorés par Git | Code + Azure | En production : Key Vault et identités managées. Le `JWT_SECRET` partagé entre services est un compromis : une clé asymétrique évite que chaque service puisse signer |
 | 5 | Ports limités sur la VM | SSH limité à une IP ; 5432 ouvert uniquement au sous-réseau des App Service | Azure | L'IP personnelle change : mettre la règle à jour |
 | 6 | Protection de la base | Pas d'exposition Internet, rôle applicatif sans droits superutilisateur, `scram-sha-256`, droits limités à SELECT/INSERT/UPDATE/DELETE | Azure + SQL | Pas de chiffrement des disques géré par nous (chiffrement Azure par défaut uniquement) |
@@ -15,10 +15,14 @@ Légende : **Code** = déjà dans le dépôt ; **Azure** = à configurer sur Azu
 
 ## Autres mesures en place
 
+- Isolation des clients : une ressource d'une autre organisation répond 404, comme une ressource inexistante.
+  `source_id` est unique par organisation, pour qu'un 409 ne révèle rien d'un autre client.
+
 - Service à service : la Function s'authentifie par une clé interne comparée en temps constant ; les routes internes sont distinctes des routes publiques.
 - Le message d'erreur de connexion est identique pour un e-mail inconnu et un mauvais mot de passe, et le temps de réponse est équivalent.
 - Entrées validées (taille, format, bornes) et requêtes SQL paramétrées (pas d'injection SQL).
-- Le premier démarrage crée l'administrateur depuis des variables d'environnement : à retirer après usage.
+- `ADMIN_EMAIL` / `ADMIN_PASSWORD` créent un compte de démonstration au démarrage : à retirer après usage.
+- `POST /auth/inscription` est public et sans limitation de débit pour l'instant : une limite par IP arrive avec le canal de collecte public.
 
 ## Points à traiter avant une mise en production réelle
 

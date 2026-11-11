@@ -138,3 +138,12 @@ def etablissement_public(jeton: str):
 def resoudre_jeton(jeton: str):
     """Route interne (service-collecte) : à quel établissement et à quelle organisation appartient ce jeton."""
     return par_jeton(jeton, "id, organisation_id, nom")
+
+
+@app.get("/interne/organisations/{organisation_id}/etablissements", dependencies=[Depends(cle_interne)])
+def etablissements_interne(organisation_id: int):
+    """Route interne (Function) : noms des établissements d'une organisation, pour rédiger le rapport hebdomadaire."""
+    with db() as conn:
+        return conn.execute(
+            "SELECT id, nom FROM etablissements WHERE organisation_id = %s ORDER BY id", (organisation_id,)
+        ).fetchall()

@@ -59,3 +59,11 @@ def test_limitation_de_debit_par_ip(client):
     r = client.get(f"/public/etablissements/{jeton}", headers=ip1)
     assert r.status_code == 429 and int(r.headers["Retry-After"]) >= 1
     assert client.get(f"/public/etablissements/{jeton}", headers=ip2).status_code == 200
+
+
+def test_route_interne_noms_des_etablissements(client):
+    creer(client, A, "Café Atlas")
+    creer(client, B, "Concurrent")
+    assert client.get("/interne/organisations/1/etablissements").status_code == 401
+    noms = client.get("/interne/organisations/1/etablissements", headers=CLE).json()
+    assert [e["nom"] for e in noms] == ["Café Atlas"]

@@ -1,18 +1,25 @@
-import type { Metadata, Viewport } from "next";
-
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: { default: "Beacom", template: "%s · Beacom" },
-  description: "Les avis de vos clients, analysés automatiquement : ce qui plaît, ce qui déçoit, établissement par établissement.",
+// On configure la police Inter avec toutes ses variations de poids
+const inter = Inter({ 
+  subsets: ["latin"],
+  display: 'swap',
+  variable: '--font-inter',
+});
+
+export const metadata = {
+  title: "Beacom - E-réputation SaaS",
+  description: "Gérez les avis de vos établissements",
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1 };
-
-export default function RacineLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <body className="min-h-screen antialiased">{children}</body>
+    <html lang="fr" className={`${inter.variable}`}>
+      {/* antialiased rend le texte beaucoup plus doux et net */}
+      <body className={`${inter.className} antialiased bg-slate-50 text-slate-800`}>
+        {children}
+      </body>
     </html>
   );
 }

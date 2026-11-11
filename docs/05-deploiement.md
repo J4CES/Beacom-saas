@@ -5,7 +5,20 @@ Les noms `app-beacom-*` doivent être uniques dans Azure : ajoutez un suffixe si
 
 ## 1. Préparer
 
-La VM, le Storage Account (file `avis-a-analyser`) et Azure AI Language se créent comme décrit à l'étape 1 du projet.
+La VM, le Storage Account (file `avis-a-analyser`) et Azure AI Language se créent comme décrit à l'étape 1 du projet,
+avec les trois réglages d'économie de `04-finops.md` : **disque Standard SSD, aucune IP publique, arrêt de 22 h à 8 h**.
+
+```bash
+az vm create -g $RG -n vm-beacom-db --image Ubuntu2204 --size Standard_B1s \
+  --storage-sku StandardSSD_LRS --public-ip-address "" --nsg-rule NONE \
+  --admin-username azureuser --generate-ssh-keys
+az vm auto-shutdown -g $RG -n vm-beacom-db --time 2100   # heure UTC : 22 h au Maroc (UTC+1)
+# Démarrage à 8 h : planification Azure Automation, ou workflow GitHub planifié lançant `az vm start` (TODO, au choix de l'équipe)
+```
+
+Sans IP publique, toutes les commandes « sur la VM » ci-dessous passent par l'agent Azure :
+`az vm run-command invoke -g $RG -n vm-beacom-db --command-id RunShellScript --scripts "<commande>"`
+(pour un script SQL : `--scripts @infra/sql/01_etablissements.sql` après l'avoir encadré d'un appel à `psql`).
 Ajoutez la quatrième base et les tables :
 
 ```bash
@@ -273,11 +286,11 @@ az monitor scheduled-query create -g $RG -n alerte-poison --scopes $APPI --sever
   --evaluation-frequency 5m --window-size 5m --action-groups $AG \
   --condition "count 'Q3' > 0" --condition-query Q3="traces | where message has 'avis-a-analyser-poison'"
 
-# Alerte 4 : 80 % du budget mensuel (montant : voir 04-finops.md)
+# Alerte 4 : 80 % du budget mensuel de 25 $ (voir 04-finops.md)
 SUB=$(az account show --query id -o tsv)
 az rest --method put \
   --url "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Consumption/budgets/budget-beacom?api-version=2023-05-01" \
-  --body '{"properties":{"category":"Cost","amount":<BUDGET_USD>,"timeGrain":"Monthly",
+  --body '{"properties":{"category":"Cost","amount":25,"timeGrain":"Monthly",
     "timePeriod":{"startDate":"<AAAA-MM-01>"},
     "notifications":{"reel-80":{"enabled":true,"operator":"GreaterThanOrEqualTo","threshold":80,
       "thresholdType":"Actual","contactEmails":["<EMAIL_EQUIPE>"]}}}}'

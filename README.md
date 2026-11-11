@@ -3,6 +3,14 @@
 SaaS d'e-réputation : collecte d'avis sur des établissements, analyse de sentiment automatique (Azure AI Language) et tableau de bord.
 Projet « Cloud Startup Challenge » : architecture microservices avec IaaS, PaaS et FaaS sur Microsoft Azure.
 
+## Équipe « Beacom »
+
+| Membre | Rôle |
+|---|---|
+| Chiara Mégane BEDOUME LEGNIGHA | Responsable produit et données |
+| Romain LE MOAL | Architecte Cloud et développeur |
+| Joseph Annaick Célestine ELIWO SOUMBOUNOU | Responsable déploiement, sécurité et coûts |
+
 ## Architecture
 
 ```mermaid
@@ -46,6 +54,8 @@ Chaque service est propriétaire de sa base et l'expose par son API.
 | [docs/04-finops.md](docs/04-finops.md) | Estimation des coûts et leviers d'économie |
 | [docs/05-deploiement.md](docs/05-deploiement.md) | Déploiement Azure, GitHub Actions, scénario de démonstration |
 | [docs/06-observabilite.md](docs/06-observabilite.md) | Journaux, disponibilité, performance, alertes, diagnostic (KQL) |
+| [docs/07-soutenance.md](docs/07-soutenance.md) | Réponses courtes aux 10 questions de la soutenance |
+| [docs/08-presentation.md](docs/08-presentation.md) | Plan des diapositives, scénario de démonstration, plan B |
 
 ## Démarrage local
 
@@ -69,10 +79,11 @@ de l'organisation A reçoit 404 sur une ressource de l'organisation B.
 
 ## Accès à PostgreSQL
 
-Le port 5432 n'est pas ouvert sur Internet. En local, ouvrez un tunnel SSH :
+La VM n'a pas d'IP publique et le port 5432 n'est pas ouvert sur Internet. On administre PostgreSQL par l'agent Azure :
 
 ```bash
-ssh -L 5432:localhost:5432 azureuser@<IP_VM>
+az vm run-command invoke -g rg-beacom-prod -n vm-beacom-db --command-id RunShellScript \
+  --scripts "sudo -u postgres psql -c '\l'"
 ```
 
 Sur Azure, les App Service joignent la VM par son adresse privée via l'intégration au réseau virtuel (voir `docs/05-deploiement.md`).

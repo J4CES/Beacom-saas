@@ -1,5 +1,12 @@
 # 2. Architecture
 
+## Diagramme Cloud
+
+![Architecture Azure de Beacom](diagrams/architecture_azure.png)
+
+Généré par [`diagrams/architecture_azure.py`](diagrams/architecture_azure.py) (bibliothèque `diagrams`, icônes Azure ;
+commande de régénération dans l'en-tête du script).
+
 ## Vue d'ensemble
 
 ```mermaid
@@ -99,10 +106,11 @@ le trouve donc toujours, et le statut `analyse` qu'elle pose n'est jamais écras
 |---|---|
 | Système | Ubuntu 22.04 LTS : support long, PostgreSQL 14 dans les dépôts officiels |
 | Taille | `Standard_B1s` (burstable) : charge faible et irrégulière d'un prototype. `B2s` si la mémoire manque |
-| Ports ouverts | 22 (SSH) limité à l'IP de l'équipe. 5432 uniquement depuis le sous-réseau des App Service, jamais depuis Internet |
-| Stratégie d'accès | Clé SSH uniquement, pas de mot de passe ; tunnel SSH pour l'administration des bases |
+| Ports ouverts | **Aucun port ouvert sur Internet** : la VM n'a pas d'IP publique. 5432 accepté uniquement depuis le sous-réseau des App Service |
+| Stratégie d'accès | Administration par `az vm run-command invoke` (commande exécutée par l'agent Azure, authentifiée par Microsoft Entra ID) : ni SSH exposé ni mot de passe |
+| Disque | Standard SSD E4 (32 Go) : suffisant pour la démonstration, 2,4 fois moins cher que le Premium SSD |
 | Sécurisation | Pare-feu NSG, `scram-sha-256`, rôle applicatif sans droits superutilisateur, mises à jour de sécurité automatiques |
-| Coût | Voir `04-finops.md` ; arrêt automatique à 22h00 |
+| Coût | ≈ 5 $/mois avec l'arrêt de 22 h à 8 h (voir `04-finops.md`) |
 | Pourquoi IaaS | Contrôle complet du moteur de base de données et de sa configuration. Compromis honnête : on assume l'exploitation (mises à jour, sauvegardes) |
 
 ## PaaS : Azure App Service

@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* Jetons de couleur. Sentiments : paire bleu (positif) <-> rouge (négatif), gris neutre au milieu, violet pour « mitigé ».
+   Palette validée (scripts de la consigne dataviz) en clair et en sombre ; le gris clair est sous 3:1 sur la surface :
+   les graphiques portent donc toujours des étiquettes visibles et une vue en tableau. */
+:root {
+  color-scheme: light;
+  --fond: #f9f9f7;
+  --surface: #fcfcfb;
+  --encre: #0b0b0b;
+  --encre-2: #52514e;
+  --muet: #6f6d68;
+  --bord: rgba(11, 11, 11, 0.12);
+  --grille: #e1e0d9;
+  --accent: #256abf;
+  --accent-encre: #ffffff;
+  --positif: #2a78d6;
+  --neutre: #a8a69e;
+  --mitige: #6250d6;
+  --negatif: #e34948;
+  --critique: #d03b3b;
+  --succes: #006300;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --fond: #0d0d0d;
+    --surface: #1a1a19;
+    --encre: #f0efec;
+    --encre-2: #c3c2b7;
+    --muet: #9a988f;
+    --bord: rgba(255, 255, 255, 0.12);
+    --grille: #2c2c2a;
+    --accent: #3987e5;
+    --accent-encre: #0b0b0b;
+    --positif: #3987e5;
+    --neutre: #6b6a64;
+    --mitige: #9085e9;
+    --negatif: #e66767;
+    --critique: #e66767;
+    --succes: #0ca30c;
+  }
+}
+
+@theme inline {
+  --color-fond: var(--fond);
+  --color-surface: var(--surface);
+  --color-encre: var(--encre);
+  --color-encre-2: var(--encre-2);
+  --color-muet: var(--muet);
+  --color-bord: var(--bord);
+  --color-grille: var(--grille);
+  --color-accent: var(--accent);
+  --color-accent-encre: var(--accent-encre);
+  --color-positif: var(--positif);
+  --color-neutre: var(--neutre);
+  --color-mitige: var(--mitige);
+  --color-negatif: var(--negatif);
+  --color-critique: var(--critique);
+  --color-succes: var(--succes);
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body {
+  background: var(--fond);
+  color: var(--encre);
+  font-family: var(--font-sans);
+}
+
+.carte {
+  @apply rounded-xl border border-bord bg-surface p-5;
+}
+.champ {
+  @apply w-full rounded-lg border border-bord bg-surface px-3 py-2 text-sm text-encre outline-none focus:border-accent focus:ring-2 focus:ring-accent/30;
+}
+.bouton {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-encre transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50;
+}
+.bouton-discret {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-bord px-3 py-1.5 text-sm text-encre-2 transition hover:bg-grille/60 disabled:opacity-50;
+}
+.etiquette {
+  @apply mb-1 block text-sm font-medium text-encre-2;
+}

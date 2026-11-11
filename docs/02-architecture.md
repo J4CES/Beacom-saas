@@ -33,8 +33,8 @@ Les services (App Service, PaaS) et la Function (FaaS) tournent hors de la VM. L
 | `service-utilisateurs` | Identité, connexion, rôles | `db_utilisateurs` | - |
 | `service-etablissements` | Référentiel des établissements | `db_etablissements` | - (valide les jetons) |
 | `service-collecte` | Réception et suivi des avis | `db_collecte`, file `avis-a-analyser` | `service-etablissements` (REST) |
-| `service-analyses` | Résultats d'analyse et indicateurs | `db_analyses` | - |
-| `function-nlp` | Analyse de sentiment automatique | aucune | file, `service-analyses`, `service-collecte`, Azure AI Language |
+| `service-analyses` | Résultats d'analyse et indicateurs : résumé, tendance, thèmes, alertes, par établissement | `db_analyses` (analyses, mots-clés, alertes) | - |
+| `function-nlp` | Analyse de sentiment, mots-clés, alertes | aucune | file, `service-analyses`, `service-collecte`, `service-utilisateurs`, Azure AI Language, Communication Services |
 
 **Justification du découpage.** Chaque service correspond à un besoin métier distinct, qui évolue à son rythme et se déploie seul :
 l'identité change peu et doit être très sécurisée ; les établissements sont un référentiel stable ; la collecte reçoit des écritures
@@ -78,8 +78,10 @@ ouverte depuis un lien ou un QR code posé sur la table, permet à un client fin
 | collecte -> établissements | REST synchrone | jeton public -> établissement et organisation | clé interne `X-API-Key` |
 | collecte -> utilisateurs | REST synchrone | plan de l'organisation (dépôt public) | clé interne `X-API-Key` |
 | client final -> collecte | REST public, sans compte | dépôt d'avis via lien / QR code | jeton public de l'établissement, limitation de débit |
-| collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, texte, langue}` | chaîne de connexion du Storage |
-| Function -> analyses / collecte | REST | résultat, nouveau statut | clé interne `X-API-Key` |
+| collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, etablissement_id, texte, langue, date_avis}` | chaîne de connexion du Storage |
+| Function -> analyses / collecte | REST | analyse et mots-clés, alerte, nouveau statut | clé interne `X-API-Key` |
+| Function -> utilisateurs | REST | destinataires des alertes (admins de l'organisation) | clé interne `X-API-Key` |
+| Function -> Azure Communication Services | SDK | e-mail d'alerte (facultatif) | chaîne de connexion ACS |
 
 Gestion des erreurs : codes HTTP explicites (401, 403, 404, 409, 422, 502, 503). Reprises : la file réessaie 5 fois puis isole le
 message en poison queue ; les écritures de la Function sont idempotentes ; `POST /avis/renvoyer-nouveaux` rattrape les avis

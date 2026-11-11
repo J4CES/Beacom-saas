@@ -51,7 +51,9 @@ Priorités MoSCoW : **M** = indispensable pour la démonstration, **S** = souhai
 | A2 | système | analyser chaque avis automatiquement | M | Function faite |
 | A3 | admin | renvoyer les avis dont l'envoi a échoué | S | API faite |
 | D1 | lecteur | voir la répartition des sentiments | M | API faite, écran à faire |
-| D2 | lecteur | filtrer les avis et analyses par établissement | S | À faire |
-| D3 | gérant | être alerté d'un avis négatif | C | À faire (extension de la Function) |
+| D2 | lecteur | filtrer les avis et analyses par établissement | S | API faite (écran à faire) |
+| D3 | gérant | être alerté d'un avis très négatif (tableau de bord + e-mail) | S | Function et API faites |
+| D4 | gérant | voir l'évolution des sentiments par jour ou par semaine | S | API faite (écran à faire) |
+| D5 | gérant | savoir de quoi se plaignent les clients (mots-clés des avis négatifs) | S | Function et API faites |
 | F1 | utilisateur | une interface web pour tout cela | M | À faire (`frontend-nextjs`) |
 | I1 | gestionnaire | importer des avis depuis un fichier CSV | C | API faite |

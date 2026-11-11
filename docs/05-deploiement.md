@@ -26,6 +26,7 @@ for b in utilisateurs etablissements collecte analyses; do
   sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_$b -f migrations/001_multi_clients_$b.sql
 done
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_etablissements -f migrations/002_jeton_public_etablissements.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f migrations/003_analyses_par_etablissement.sql
 ```
 
 ## 2. Réseau : permettre aux App Service de joindre PostgreSQL
@@ -106,7 +107,24 @@ az functionapp create -g $RG -n func-beacom-nlp --storage-account <STORAGE> \
 az functionapp config appsettings set -g $RG -n func-beacom-nlp --settings \
   LANGUAGE_ENDPOINT="<ENDPOINT>" LANGUAGE_KEY="<CLE>" INTERNAL_API_KEY="<CLE_INTERNE>" \
   ANALYSES_API_URL="https://app-beacom-analyses.azurewebsites.net" \
-  COLLECTE_API_URL="https://app-beacom-collecte.azurewebsites.net"
+  COLLECTE_API_URL="https://app-beacom-collecte.azurewebsites.net" \
+  UTILISATEURS_API_URL="https://app-beacom-utilisateurs.azurewebsites.net" \
+  SEUIL_ALERTE=0.8 FRONTEND_URL="https://<URL_FRONTEND>"
+```
+
+**E-mails d'alerte (facultatif)** : Azure Communication Services avec un domaine géré par Azure. Sans ces paramètres,
+les alertes sont enregistrées et journalisées, sans e-mail.
+
+```bash
+az extension add --name communication
+az communication create -g $RG -n acs-beacom --location global --data-location Europe
+az communication email create -g $RG -n email-beacom --location global --data-location Europe
+az communication email domain create -g $RG --email-service-name email-beacom -n AzureManagedDomain \
+  --location global --domain-management AzureManaged
+# Relier le domaine à la ressource ACS (portail : Communication Services > Email > Domaines connectés), puis :
+az communication list-key -g $RG -n acs-beacom --query primaryConnectionString -o tsv
+az functionapp config appsettings set -g $RG -n func-beacom-nlp --settings \
+  ACS_CONNECTION_STRING="<CHAINE_ACS>" ACS_EXPEDITEUR="DoNotReply@<domaine>.azurecomm.net"
 ```
 
 La Function utilise le compte de stockage pour sa file (`AzureWebJobsStorage` est défini à la création).
@@ -147,7 +165,10 @@ curl -s -X POST $C/avis -H "Authorization: Bearer $TOKEN" -H 'Content-Type: appl
 
 # 4. Après quelques secondes : la Function a analysé l'avis
 curl -s $A/analyses/avis/1 -H "Authorization: Bearer $TOKEN"
-curl -s $A/analyses/resume -H "Authorization: Bearer $TOKEN"
+curl -s "$A/analyses/resume?etablissement_id=1" -H "Authorization: Bearer $TOKEN"
+curl -s "$A/analyses/tendance?periode=jour" -H "Authorization: Bearer $TOKEN"
+curl -s "$A/analyses/themes?sentiment=negative" -H "Authorization: Bearer $TOKEN"
+curl -s $A/analyses/alertes -H "Authorization: Bearer $TOKEN"   # l'avis « café froid » du 4 bis
 curl -s "$C/avis?etablissement_id=1" -H "Authorization: Bearer $TOKEN"   # statut passé à « analyse »
 
 # 4 bis. Dépôt public par un client final, sans compte (jeton_public renvoyé à la création de l'établissement)

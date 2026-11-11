@@ -28,6 +28,8 @@ Légende : **Code** = déjà dans le dépôt ; **Azure** = à configurer sur Azu
   `source_id` est unique par organisation, pour qu'un 409 ne révèle rien d'un autre client.
 
 - Service à service : la Function s'authentifie par une clé interne comparée en temps constant ; les routes internes sont distinctes des routes publiques.
+- E-mails d'alerte : l'extrait de l'avis (texte libre d'un client) est échappé dans la version HTML ; seuls les admins
+  actifs de l'organisation concernée le reçoivent.
 - Le message d'erreur de connexion est identique pour un e-mail inconnu et un mauvais mot de passe, et le temps de réponse est équivalent.
 - Entrées validées (taille, format, bornes) et requêtes SQL paramétrées (pas d'injection SQL).
 - `ADMIN_EMAIL` / `ADMIN_PASSWORD` créent un compte de démonstration au démarrage : à retirer après usage.

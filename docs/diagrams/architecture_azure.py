@@ -2,19 +2,20 @@
 
 Regénérer depuis la racine du dépôt (Docker, rien à installer) :
     docker run --rm -v "$PWD/docs/diagrams":/d -w /d python:3.11-slim sh -c \\
-      "apt-get update -qq && apt-get install -y -qq graphviz fonts-dejavu-core >/dev/null && pip install -q diagrams && python architecture_azure.py"
+      "apt-get update -qq && apt-get install -y -qq graphviz fonts-dejavu-core >/dev/null \\
+       && pip install -q diagrams && python architecture_azure.py"
 Produit architecture_azure.png à côté du script.
 """
 from diagrams import Cluster, Diagram, Edge
 from diagrams.azure.analytics import LogAnalyticsWorkspaces
-from diagrams.azure.compute import AppServices, FunctionApps, VM
+from diagrams.azure.compute import VM, AppServices, FunctionApps
 from diagrams.azure.devops import ApplicationInsights
 from diagrams.azure.ml import CognitiveServices
 from diagrams.azure.network import NetworkSecurityGroupsClassic, Subnets
 from diagrams.azure.storage import QueuesStorage
 from diagrams.azure.web import AppServicePlans
-from diagrams.onprem.client import Users
 from diagrams.onprem.ci import GithubActions
+from diagrams.onprem.client import Users
 from diagrams.onprem.database import Postgresql
 
 attributs = {"fontsize": "20", "pad": "0.6", "splines": "spline", "nodesep": "0.7", "ranksep": "1.1"}

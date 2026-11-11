@@ -32,6 +32,10 @@ flowchart LR
 
 Chaque service est propriétaire de sa base et l'expose par son API.
 
+**Multi-clients.** Chaque client de Beacom est une *organisation* (créée par `POST /auth/inscription`) avec un plan
+`gratuit`, `pro` ou `entreprise`. Le jeton JWT porte l'organisation, et chaque service filtre toutes ses lectures et
+écritures dessus : un client ne voit jamais les données d'un autre (voir `docs/02-architecture.md`).
+
 ## Documentation (livrables du TP)
 
 | Document | Contenu |
@@ -44,11 +48,23 @@ Chaque service est propriétaire de sa base et l'expose par son API.
 
 ## Démarrage local
 
-1. Créer les bases : `infra/sql/01...04_*.sql` (une base par fichier).
+1. Créer les bases : `infra/sql/01...04_*.sql` (une base par fichier). Une base créée avec une version antérieure
+   se met à jour avec les migrations idempotentes de `infra/sql/migrations/` (voir son README).
 2. Dans chaque dossier `service-*` : copier `.env.example` en `.env`, installer `requirements.txt`, lancer `uvicorn main:app --port <port>`
    (8000 utilisateurs, 8001 établissements, 8002 collecte, 8003 analyses).
 3. Le `JWT_SECRET` doit être identique dans les quatre services.
 4. Lancer `function-nlp` avec `func start` (voir son README).
+5. Créer un compte : `POST /auth/inscription` sur `service-utilisateurs` (organisation + premier admin).
+
+## Tests
+
+```bash
+./scripts/lancer-tests.sh              # tous les services, dans Docker (PostgreSQL 14 + Python 3.11)
+./scripts/lancer-tests.sh collecte     # un seul : utilisateurs, etablissements, collecte, analyses, infra, function
+```
+
+Les tests tournent contre un vrai PostgreSQL, comme en CI. Ils vérifient notamment, dans chaque service, qu'un utilisateur
+de l'organisation A reçoit 404 sur une ressource de l'organisation B.
 
 ## Accès à PostgreSQL
 
@@ -67,5 +83,5 @@ paramètres Azure / secrets GitHub. Si un secret est commité par erreur, renouv
 
 ## CI/CD
 
-`.github/workflows/deploy.yml` : tests, puis déploiement des 4 services et de la Function à chaque push sur `main`,
-puis vérification de `/health`.
+`.github/workflows/deploy.yml` : tests contre PostgreSQL sur chaque pull request ; à chaque push sur `main`, tests,
+puis déploiement des 4 services et de la Function, puis vérification de `/health`.

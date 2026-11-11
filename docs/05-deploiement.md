@@ -18,6 +18,15 @@ sudo -u postgres psql -d db_utilisateurs   -f 04_utilisateurs.sql
 sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE db_utilisateurs TO beacom;"
 ```
 
+**Bases déjà créées avec une version antérieure** : appliquez les migrations idempotentes, dans l'ordre, puis déployez
+le code. Avant la migration multi-clients, laissez la file `avis-a-analyser` se vider (voir `infra/sql/migrations/README.md`).
+
+```bash
+for b in utilisateurs etablissements collecte analyses; do
+  sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_$b -f migrations/001_multi_clients_$b.sql
+done
+```
+
 ## 2. Réseau : permettre aux App Service de joindre PostgreSQL
 
 Les App Service doivent atteindre la VM par son adresse **privée**, jamais par Internet. Vérifiez les noms créés par `az vm create` :
@@ -77,7 +86,7 @@ az webapp config appsettings set -g $RG -n app-beacom-collecte --settings \
 
 | Application | Paramètres propres (en plus de `JWT_SECRET` et `ALLOWED_ORIGINS`) |
 |---|---|
-| `app-beacom-utilisateurs` | `DATABASE_URL` (db_utilisateurs), `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `JWT_EXPIRE_MINUTES` |
+| `app-beacom-utilisateurs` | `DATABASE_URL` (db_utilisateurs), `JWT_EXPIRE_MINUTES` ; facultatifs, pour un compte de démonstration : `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_ORGANISATION` |
 | `app-beacom-etablissements` | `DATABASE_URL` (db_etablissements) |
 | `app-beacom-collecte` | voir ci-dessus |
 | `app-beacom-analyses` | `DATABASE_URL` (db_analyses), `INTERNAL_API_KEY` |
@@ -117,9 +126,11 @@ E=https://app-beacom-etablissements.azurewebsites.net
 C=https://app-beacom-collecte.azurewebsites.net
 A=https://app-beacom-analyses.azurewebsites.net
 
-# 1. Connexion
-TOKEN=$(curl -s -X POST $U/auth/login -H 'Content-Type: application/json' \
-  -d '{"email":"<ADMIN_EMAIL>","mot_de_passe":"<ADMIN_PASSWORD>"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+# 1. Inscription d'un client (organisation + admin), qui renvoie directement un jeton
+TOKEN=$(curl -s -X POST $U/auth/inscription -H 'Content-Type: application/json' \
+  -d '{"organisation":"Café Atlas","email":"gerant@atlas.ma","mot_de_passe":"<MOT_DE_PASSE_LONG>"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+# Connexions suivantes : POST $U/auth/login avec {"email":..., "mot_de_passe":...}
 
 # 2. Créer un établissement (service-etablissements -> db_etablissements)
 curl -s -X POST $E/etablissements -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -133,6 +144,12 @@ curl -s -X POST $C/avis -H "Authorization: Bearer $TOKEN" -H 'Content-Type: appl
 curl -s $A/analyses/avis/1 -H "Authorization: Bearer $TOKEN"
 curl -s $A/analyses/resume -H "Authorization: Bearer $TOKEN"
 curl -s "$C/avis?etablissement_id=1" -H "Authorization: Bearer $TOKEN"   # statut passé à « analyse »
+
+# 5. Isolation : un second client ne voit pas les données du premier (404)
+TOKEN2=$(curl -s -X POST $U/auth/inscription -H 'Content-Type: application/json' \
+  -d '{"organisation":"Concurrent","email":"autre@exemple.ma","mot_de_passe":"<MOT_DE_PASSE_LONG>"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+curl -s -o /dev/null -w '%{http_code}\n' $E/etablissements/1 -H "Authorization: Bearer $TOKEN2"   # 404
 ```
 
 À montrer à l'oral : la connexion, l'appel du microservice, l'écriture en base, l'exécution de la Function (onglet *Monitor* de la

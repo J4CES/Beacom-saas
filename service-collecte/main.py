@@ -34,6 +34,12 @@ def get_queue() -> QueueClient:
     )
 
 
+def marquer_en_file(conn: psycopg.Connection, avis_id: int) -> None:
+    """Passe l'avis à 'en_file', sauf si la Function l'a déjà marqué 'analyse' entre-temps."""
+    conn.execute("UPDATE avis SET statut = 'en_file' WHERE id = %s AND statut = 'nouveau'", (avis_id,))
+    conn.commit()
+
+
 def verifier_etablissement(etab_id: int, token: str) -> None:
     """Appel REST synchrone vers service-etablissements (le jeton de l'utilisateur est transmis)."""
     if not ETABLISSEMENTS_API_URL:
@@ -90,17 +96,19 @@ def collecter(avis: AvisIn, creds: HTTPAuthorizationCredentials = Depends(bearer
                 avis.source,
             ),
         ).fetchone()["id"]
+        # L'avis doit être visible en base AVANT d'être en file : sinon la Function, plus rapide,
+        # recevrait un 404 en mettant à jour son statut.
+        conn.commit()
 
         message = {"avis_id": avis_id, "texte": avis.texte, "langue": avis.langue}
         try:
             get_queue().send_message(json.dumps(message, ensure_ascii=False))
         except Exception as exc:
             # L'avis reste en 'nouveau' : POST /avis/renvoyer-nouveaux le renverra plus tard.
-            conn.commit()
             logger.exception("Envoi en file échoué pour l'avis %s", avis_id)
             raise HTTPException(502, f"Avis enregistré (id={avis_id}) mais envoi en file échoué") from exc
 
-        conn.execute("UPDATE avis SET statut = 'en_file' WHERE id = %s", (avis_id,))
+        marquer_en_file(conn, avis_id)
     return {"id": avis_id, "statut": "en_file"}
 
 
@@ -120,15 +128,24 @@ def lister(etablissement_id: int | None = None, limit: int = 100, offset: int = 
 
 @app.post("/avis/renvoyer-nouveaux", dependencies=[Depends(exiger_roles("admin"))])
 def renvoyer_nouveaux():
-    """Renvoie dans la file les avis restés en statut 'nouveau'."""
+    """Renvoie dans la file les avis restés en statut 'nouveau'.
+
+    Chaque avis est validé séparément : une panne en cours de route n'annule pas les envois déjà faits.
+    """
     queue = get_queue()
     envoyes = 0
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
-        for r in conn.execute("SELECT id, texte, langue FROM avis WHERE statut = 'nouveau'").fetchall():
-            queue.send_message(
-                json.dumps({"avis_id": r["id"], "texte": r["texte"], "langue": r["langue"]}, ensure_ascii=False)
-            )
-            conn.execute("UPDATE avis SET statut = 'en_file' WHERE id = %s", (r["id"],))
+        lignes = conn.execute("SELECT id, texte, langue FROM avis WHERE statut = 'nouveau' ORDER BY id").fetchall()
+        conn.commit()
+        for r in lignes:
+            try:
+                queue.send_message(
+                    json.dumps({"avis_id": r["id"], "texte": r["texte"], "langue": r["langue"]}, ensure_ascii=False)
+                )
+            except Exception as exc:
+                logger.exception("Renvoi en file échoué pour l'avis %s", r["id"])
+                raise HTTPException(502, f"{envoyes} avis renvoyés, puis échec de l'envoi en file (avis {r['id']})") from exc
+            marquer_en_file(conn, r["id"])
             envoyes += 1
     return {"envoyes": envoyes}
 

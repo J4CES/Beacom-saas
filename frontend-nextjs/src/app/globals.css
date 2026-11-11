@@ -1,5 +1,7 @@
 @import "tailwindcss";
-
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 /* Jetons de couleur. Sentiments : paire bleu (positif) <-> rouge (négatif), gris neutre au milieu, violet pour « mitigé ».
    Palette validée (scripts de la consigne dataviz) en clair et en sombre ; le gris clair est sous 3:1 sur la surface :
    les graphiques portent donc toujours des étiquettes visibles et une vue en tableau. */

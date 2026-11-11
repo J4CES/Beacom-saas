@@ -1,24 +1,49 @@
 # 1. Produit : pitch, besoin, backlog
 
-> Document à relire et à adapter par l'équipe : le positionnement ci-dessous est déduit de l'architecture du projet
-> (établissements, avis, analyse de sentiment). Les chiffres de tarification sont des hypothèses à valider.
-
 ## Pitch
 
-**Beacom** est un SaaS d'e-réputation pour les établissements (restaurants, hôtels, cliniques, centres de formation...).
-Il centralise les avis clients, en analyse automatiquement le sentiment et présente un tableau de bord qui montre
-ce que les clients apprécient et ce qui les déçoit, établissement par établissement.
+**Beacom** aide les **restaurants et cafés au Maroc**, de l'indépendant à la petite chaîne de quelques adresses, à
+comprendre ce que pensent leurs clients. Un QR code sur la table, un avis laissé en 30 secondes, sans compte ; Beacom
+l'analyse aussitôt (positif, négatif, de quoi on parle) et prévient le gérant quand un client repart très mécontent.
+Chaque lundi matin, un rapport dit ce qui a progressé et ce qui coince, établissement par établissement.
 
 ## Expression du besoin
 
 | Question du TP | Réponse |
 |---|---|
-| Problème identifié | Les avis sont dispersés et lus à la main : on voit tard les problèmes récurrents, et on ne mesure pas l'évolution de la satisfaction |
-| Utilisateurs concernés | Gérants et responsables qualité d'établissements, groupes multi-sites |
-| Solution proposée | Collecte centralisée des avis, analyse de sentiment automatique, tableau de bord par établissement |
-| Valeur ajoutée | Gain de temps, détection rapide des avis négatifs, vue consolidée multi-établissements |
-| Concurrents / existant | Outils d'e-réputation généralistes et tableurs. À compléter par l'équipe avec 2 ou 3 concurrents nommés et leurs limites |
-| Modèle économique (hypothèse) | Abonnement mensuel par établissement, avec paliers selon le volume d'avis analysés |
+| Problème identifié | Un gérant de café ou de restaurant apprend souvent trop tard qu'un problème se répète (attente, accueil, propreté) : les avis sont rares, dispersés (Google, réseaux sociaux, remarques orales) et lus à la main, et un client mécontent part sans rien dire |
+| Utilisateurs concernés | Gérants de cafés et restaurants indépendants ; responsables de petites chaînes (2 à 10 adresses) qui veulent comparer leurs établissements ; leurs clients, qui donnent leur avis sans créer de compte |
+| Solution proposée | Un SaaS qui collecte les avis (QR code et lien public, saisie, import CSV), les analyse automatiquement (sentiment et thèmes, Azure AI Language), alerte sur les avis très négatifs et produit un tableau de bord et un rapport hebdomadaire par établissement |
+| Valeur ajoutée | Collecte directe sur place, sans compte ni application pour le client ; alerte immédiate qui permet de rattraper un client le jour même ; lecture par thèmes (« attente », « café froid ») plutôt qu'une note moyenne ; prix pensé pour un indépendant, avec un plan gratuit |
+| Concurrents / existant | Voir ci-dessous |
+| Modèle économique | Abonnement mensuel **par établissement**, avec un plan gratuit d'appel (voir ci-dessous) |
+
+## Concurrents et solutions existantes
+
+Recherche du 11 novembre 2026. Les prix publics sont rares ; les montants cités viennent d'annuaires de logiciels et sont
+**indicatifs** (**TODO** : les confirmer par une demande de devis).
+
+| Solution | Ce qu'elle propose | Limites pour notre cible | Ce qui distingue Beacom |
+|---|---|---|---|
+| **Partoo** (France) | Gestion des fiches locales (Google, etc.), des avis et des messages pour les enseignes multi-établissements ; prix sur devis, « à partir de 149 € » par mois facturés à l'année selon GetApp ([lafabriquedunet.fr](https://www.lafabriquedunet.fr/logiciels/comparateur/partoo-vs-guest-suite), [getapp.fr](https://www.getapp.fr/software/2059946/partoo)) | Pensé pour les réseaux et enseignes ; budget élevé pour un café indépendant ; centré sur la présence en ligne plutôt que sur la collecte en salle | Collecte sur place par QR code, analyse par thèmes, plan gratuit |
+| **Guest Suite** (France) | Collecte d'avis certifiée NF Service (AFNOR), puis gestion des fiches ; tarifs dégressifs selon le nombre de points de vente, essai sur demande ([leptidigital.fr](https://www.leptidigital.fr/logiciels/guest-suite/), [capterra.fr](https://www.capterra.fr/software/196590/guest-suite)) | Prix non publiés ; outil complet mais calibré pour des structures plus grandes | Démarrage en libre-service en 2 minutes, sans devis |
+| **ReviewTrackers** (États-Unis) | Suivi des avis multi-sites, campagnes de demande d'avis, **analyse de sentiment**, rapports comparatifs ; restauration et hôtellerie parmi ses premiers secteurs ; prix d'entrée relevés entre 89 $ et 299 $ par mois selon les sources ([capterra.com](https://www.capterra.com/p/140801/ReviewTrackers/), [g2.com](https://www.g2.com/compare/birdeye-vs-reviewtrackers)) | Interface et support en anglais, tarification en dollars, marché nord-américain | En français, prix en dirhams, alertes et rapport pensés pour un gérant |
+| **Birdeye** (États-Unis) | Plateforme complète de réputation (avis, messagerie, enquêtes, analyses de sentiment) ; prix sur devis, essai de 30 jours ([softwareadvice.com](https://www.softwareadvice.com/survey/birdeye-profile/), [g2.com](https://www.g2.com/compare/reputation-vs-reviewtrackers-vs-birdeye)) | Très large, donc complexe et coûteux pour un petit établissement | Juste l'essentiel : collecter, comprendre, réagir |
+| Existant gratuit : **fiche Google Business Profile**, cahier d'avis, réseaux sociaux | Avis publics gratuits | Peu d'avis spontanés, aucun regroupement par thème, aucune alerte, rien pour comparer plusieurs adresses | Avis privés collectés sur place, analysés et suivis dans le temps |
+
+## Modèle économique (hypothèses)
+
+Abonnement mensuel **par établissement**. Les limites des plans sont celles du prototype (`LIMITES_PLANS`).
+**Hypothèses de prix, à valider auprès de gérants** ; les montants en euros sont des équivalents arrondis
+(**TODO** : vérifier le cours MAD/EUR du jour ; calcul fait avec 1 € ≈ 10,8 MAD).
+
+| Plan | Limites | Prix (hypothèse) | Pour qui |
+|---|---|---|---|
+| **Gratuit** | 1 établissement, 100 avis par mois | 0 MAD | Découvrir l'outil ; un petit café |
+| **Pro** | jusqu'à 5 établissements, avis illimités | **149 MAD / établissement / mois** (≈ 14 €) | Indépendant ou petite chaîne |
+| **Entreprise** | illimité | **119 MAD / établissement / mois** (≈ 11 €) à partir de 6 établissements, sur contrat annuel | Chaînes et groupes |
+
+Comparaison avec le coût d'infrastructure : `04-finops.md` § 4.
 
 ## Fonctionnalités minimales exigées par le TP
 

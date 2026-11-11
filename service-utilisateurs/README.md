@@ -31,6 +31,9 @@ uvicorn main:app --reload --port 8000
 | `POST /utilisateurs` | admin : crée un compte dans **son** organisation |
 | `GET /utilisateurs` | admin : comptes de son organisation |
 | `PATCH /utilisateurs/{id}` | admin : rôle ou désactivation, dans son organisation (404 sinon) |
+| `GET /interne/organisations/{id}` | clé interne `X-API-Key` : `{id, plan}` (dépôt d'avis public) |
+
+Limitation de débit par IP : 10 connexions / 5 min, 5 inscriptions / heure (réponse 429 avec `Retry-After`).
 | `GET /health` | public |
 
 ## Tests

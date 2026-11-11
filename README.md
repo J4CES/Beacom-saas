@@ -27,7 +27,7 @@ flowchart LR
 | `service-collecte` | Reçoit les avis, les met en file | App Service (PaaS) | `db_collecte` |
 | `service-analyses` | Résultats et indicateurs | App Service (PaaS) | `db_analyses` |
 | `function-nlp` | Analyse de sentiment sur événement | Azure Functions (FaaS) | aucune (passe par les API) |
-| `frontend-nextjs` | Interface web et passerelle d'API (à développer) | App Service (PaaS) | - |
+| `frontend-nextjs` | Interface web (Next.js) et passerelle d'API | App Service (PaaS, Node 20) | - |
 | PostgreSQL | Les 4 bases | VM Ubuntu 22.04 (IaaS) | - |
 
 Chaque service est propriétaire de sa base et l'expose par son API.
@@ -45,6 +45,7 @@ Chaque service est propriétaire de sa base et l'expose par son API.
 | [docs/03-securite.md](docs/03-securite.md) | Analyse de sécurité |
 | [docs/04-finops.md](docs/04-finops.md) | Estimation des coûts et leviers d'économie |
 | [docs/05-deploiement.md](docs/05-deploiement.md) | Déploiement Azure, GitHub Actions, scénario de démonstration |
+| [docs/06-observabilite.md](docs/06-observabilite.md) | Journaux, disponibilité, performance, alertes, diagnostic (KQL) |
 
 ## Démarrage local
 
@@ -54,7 +55,7 @@ Chaque service est propriétaire de sa base et l'expose par son API.
    (8000 utilisateurs, 8001 établissements, 8002 collecte, 8003 analyses).
 3. Le `JWT_SECRET` doit être identique dans les quatre services.
 4. Lancer `function-nlp` avec `func start` (voir son README).
-5. Créer un compte : `POST /auth/inscription` sur `service-utilisateurs` (organisation + premier admin).
+5. Lancer l'interface : voir `frontend-nextjs/README.md` (Docker, sans rien installer), puis créer un compte sur `/inscription`.
 
 ## Tests
 
@@ -83,5 +84,6 @@ paramètres Azure / secrets GitHub. Si un secret est commité par erreur, renouv
 
 ## CI/CD
 
-`.github/workflows/deploy.yml` : tests contre PostgreSQL sur chaque pull request ; à chaque push sur `main`, tests,
-puis déploiement des 4 services et de la Function, puis vérification de `/health`.
+`.github/workflows/deploy.yml` : sur chaque pull request, tests contre PostgreSQL et lint, types, build et audit du frontend ;
+à chaque push sur `main`, les mêmes contrôles puis le déploiement des 4 services, de la Function et du frontend, puis la
+vérification de `/health` et de la page de connexion.

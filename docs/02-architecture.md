@@ -23,8 +23,10 @@ flowchart LR
 ```
 
 Les services (App Service, PaaS) et la Function (FaaS) tournent hors de la VM. Les quatre bases sont sur la VM Azure (IaaS).
-**API Gateway** : l'architecture du TP en prévoit une. Option économique retenue : les routes serveur de Next.js jouent ce rôle
-(point d'entrée unique, URLs internes cachées). Option production : Azure API Management.
+**API Gateway** : l'architecture du TP en prévoit une. Option économique retenue : les routes serveur de Next.js
+(`frontend-nextjs/src/app/api/...`) jouent ce rôle : point d'entrée unique, URLs des services jamais envoyées au navigateur,
+jeton en cookie HttpOnly, liste blanche des routes relayées (les routes `/interne/...` ne sont jamais joignables), contrôle
+de l'origine des requêtes qui modifient des données. Option production : Azure API Management devant les services.
 
 ## Découpage en microservices
 
@@ -33,8 +35,8 @@ Les services (App Service, PaaS) et la Function (FaaS) tournent hors de la VM. L
 | `service-utilisateurs` | Identité, connexion, rôles | `db_utilisateurs` | - |
 | `service-etablissements` | Référentiel des établissements | `db_etablissements` | - (valide les jetons) |
 | `service-collecte` | Réception et suivi des avis | `db_collecte`, file `avis-a-analyser` | `service-etablissements` (REST) |
-| `service-analyses` | Résultats d'analyse et indicateurs | `db_analyses` | - |
-| `function-nlp` | Analyse de sentiment automatique | aucune | file, `service-analyses`, `service-collecte`, Azure AI Language |
+| `service-analyses` | Résultats d'analyse et indicateurs : résumé, tendance, thèmes, alertes, par établissement | `db_analyses` (analyses, mots-clés, alertes) | - |
+| `function-nlp` | Analyse de sentiment, mots-clés, alertes ; rapport hebdomadaire planifié | aucune | file, `service-analyses`, `service-collecte`, `service-utilisateurs`, Azure AI Language, Communication Services |
 
 **Justification du découpage.** Chaque service correspond à un besoin métier distinct, qui évolue à son rythme et se déploie seul :
 l'identité change peu et doit être très sécurisée ; les établissements sont un référentiel stable ; la collecte reçoit des écritures
@@ -62,14 +64,29 @@ un prototype. Sa limite : une requête oubliant le filtre exposerait des donnée
 chaque service. Alternative pour de gros clients : une base par organisation, ou la sécurité au niveau des lignes
 de PostgreSQL (Row-Level Security).
 
+## Canal de collecte public
+
+Chaque établissement a un **jeton public** aléatoire (32 caractères hexadécimaux, 122 bits) : la page `/avis/<jeton>`,
+ouverte depuis un lien ou un QR code posé sur la table, permet à un client final de laisser un avis sans compte.
+`service-collecte` résout le jeton auprès de `service-etablissements` (route interne), qui reste seul propriétaire de
+`db_etablissements`. Le jeton se régénère si une affiche est détournée. Les avis peuvent aussi arriver par **import CSV**.
+
 ## Communications
 
 | De -> vers | Mode | Contenu | Authentification |
 |---|---|---|---|
-| Navigateur -> services | REST, JSON, HTTPS | requêtes métier | jeton JWT (rôle vérifié par chaque service) |
+| Navigateur -> passerelle Next.js | REST, JSON, HTTPS | requêtes métier | cookie HttpOnly contenant le jeton |
+| Passerelle -> services | REST, JSON, HTTPS | requêtes métier relayées | jeton JWT en `Authorization` (rôle vérifié par chaque service) |
 | collecte -> établissements | REST synchrone | existence d'un établissement | jeton JWT de l'utilisateur transmis |
-| collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, texte, langue}` | chaîne de connexion du Storage |
-| Function -> analyses / collecte | REST | résultat, nouveau statut | clé interne `X-API-Key` |
+| collecte -> établissements | REST synchrone | jeton public -> établissement et organisation | clé interne `X-API-Key` |
+| collecte -> utilisateurs | REST synchrone | plan de l'organisation (dépôt public) | clé interne `X-API-Key` |
+| client final -> collecte | REST public, sans compte | dépôt d'avis via lien / QR code | jeton public de l'établissement, limitation de débit |
+| collecte -> Function | file de messages (asynchrone) | `{avis_id, organisation_id, etablissement_id, texte, langue, date_avis}` | chaîne de connexion du Storage |
+| Function -> analyses / collecte | REST | analyse et mots-clés, alerte, nouveau statut | clé interne `X-API-Key` |
+| Function -> utilisateurs | REST | destinataires des alertes et rapports (admins de l'organisation) | clé interne `X-API-Key` |
+| Minuteur -> Function -> analyses | planifié (lundi 7 h UTC), puis REST | calcul des rapports hebdomadaires | clé interne `X-API-Key` |
+| Function -> établissements | REST | noms des établissements du rapport | clé interne `X-API-Key` |
+| Function -> Azure Communication Services | SDK | e-mail d'alerte (facultatif) | chaîne de connexion ACS |
 
 Gestion des erreurs : codes HTTP explicites (401, 403, 404, 409, 422, 502, 503). Reprises : la file réessaie 5 fois puis isole le
 message en poison queue ; les écritures de la Function sont idempotentes ; `POST /avis/renvoyer-nouveaux` rattrape les avis

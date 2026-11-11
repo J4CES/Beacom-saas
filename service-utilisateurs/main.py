@@ -9,7 +9,7 @@ from psycopg.errors import UniqueViolation
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-from auth import LIMITES_PLANS, configurer, exiger_roles, utilisateur_courant
+from auth import LIMITES_PLANS, cle_interne, configurer, exiger_roles, limiter_debit, utilisateur_courant
 from security import creer_jeton, hasher_mot_de_passe, verifier_mot_de_passe
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -52,7 +52,7 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="service-utilisateurs", lifespan=lifespan)
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 class LoginIn(BaseModel):
@@ -101,7 +101,7 @@ def reponse_jeton(u: dict) -> dict:
     }
 
 
-@app.post("/auth/inscription", status_code=201)
+@app.post("/auth/inscription", status_code=201, dependencies=[Depends(limiter_debit("inscription", 5, 3600))])
 def inscription(d: InscriptionIn):
     """Route publique : crée une organisation (plan gratuit) et son premier administrateur, puis connecte celui-ci."""
     try:
@@ -120,7 +120,7 @@ def inscription(d: InscriptionIn):
     return reponse_jeton({**u, "plan": org["plan"]})
 
 
-@app.post("/auth/login")
+@app.post("/auth/login", dependencies=[Depends(limiter_debit("login", 10, 300))])
 def login(d: LoginIn):
     with db() as conn:
         u = conn.execute(
@@ -203,3 +203,24 @@ def modifier(user_id: int, patch: UtilisateurPatch, admin: dict = Depends(exiger
         # Même réponse pour un compte inexistant et pour un compte d'une autre organisation.
         raise HTTPException(404, "Utilisateur introuvable")
     return row
+
+
+@app.get("/interne/organisations/{organisation_id}", dependencies=[Depends(cle_interne)])
+def organisation_interne(organisation_id: int):
+    """Route interne : plan d'une organisation, pour les appels sans jeton utilisateur (dépôt d'avis public)."""
+    with db() as conn:
+        org = conn.execute("SELECT id, plan FROM organisations WHERE id = %s", (organisation_id,)).fetchone()
+    if not org:
+        raise HTTPException(404, "Organisation introuvable")
+    return org
+
+
+@app.get("/interne/organisations/{organisation_id}/admins", dependencies=[Depends(cle_interne)])
+def admins_interne(organisation_id: int):
+    """Route interne : administrateurs actifs d'une organisation, destinataires des alertes et rapports par e-mail."""
+    with db() as conn:
+        return conn.execute(
+            """SELECT email, nom FROM utilisateurs
+               WHERE organisation_id = %s AND role = 'admin' AND actif ORDER BY id""",
+            (organisation_id,),
+        ).fetchall()

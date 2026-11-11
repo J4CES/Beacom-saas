@@ -67,3 +67,50 @@ def test_source_id_unique_par_organisation_apres_migration():
         c.execute("INSERT INTO etablissements (organisation_id, nom, source_id) VALUES (1, 'a', 'g'), (2, 'b', 'g')")
         with pytest.raises(psycopg.errors.UniqueViolation):
             c.execute("INSERT INTO etablissements (organisation_id, nom, source_id) VALUES (1, 'c', 'g')")
+
+
+def test_migration_002_jeton_public():
+    url = base_vide("test_migration_002")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "01_etablissements.sql").read_text())
+        c.execute("INSERT INTO etablissements (nom) VALUES ('a'), ('b'), ('c')")
+        for _ in range(2):
+            c.execute((SQL / "migrations" / "001_multi_clients_etablissements.sql").read_text())
+            c.execute((SQL / "migrations" / "002_jeton_public_etablissements.sql").read_text())
+        jetons = [j for (j,) in c.execute("SELECT jeton_public FROM etablissements").fetchall()]
+        assert len(set(jetons)) == 3 and all(len(j) == 32 for j in jetons)
+        neuve = base_vide("test_neuve_002")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "01_etablissements.sql").read_text())
+        c.execute((SQL / "migrations" / "002_jeton_public_etablissements.sql").read_text())
+
+
+def test_migration_003_analyses():
+    url = base_vide("test_migration_003")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "03_analyses.sql").read_text())
+        c.execute("INSERT INTO analyses_sentiment (avis_id, sentiment) VALUES (1, 'negative')")
+        for _ in range(2):
+            c.execute((SQL / "migrations" / "001_multi_clients_analyses.sql").read_text())
+            c.execute((SQL / "migrations" / "003_analyses_par_etablissement.sql").read_text())
+        assert c.execute("SELECT organisation_id, etablissement_id FROM analyses_sentiment").fetchall() == [(1, None)]
+        assert c.execute("SELECT COUNT(*) FROM mots_cles").fetchone() == (0,)
+        assert c.execute("SELECT COUNT(*) FROM alertes").fetchone() == (0,)
+    neuve = base_vide("test_neuve_003")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "03_analyses.sql").read_text())
+        c.execute((SQL / "migrations" / "003_analyses_par_etablissement.sql").read_text())
+
+
+def test_migration_004_rapports():
+    url = base_vide("test_migration_004")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "03_analyses.sql").read_text())
+        for _ in range(2):
+            for m in ("001_multi_clients_analyses", "003_analyses_par_etablissement", "004_rapports_hebdomadaires"):
+                c.execute((SQL / "migrations" / f"{m}.sql").read_text())
+        assert c.execute("SELECT COUNT(*) FROM rapports").fetchone() == (0,)
+    neuve = base_vide("test_neuve_004")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "03_analyses.sql").read_text())
+        c.execute((SQL / "migrations" / "004_rapports_hebdomadaires.sql").read_text())

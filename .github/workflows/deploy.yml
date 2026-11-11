@@ -6,6 +6,7 @@ on:
     paths:
       - "service-*/**"
       - "function-nlp/**"
+      - "frontend-nextjs/**"
       - "infra/**"
       - "requirements-dev.txt"
       - ".github/workflows/deploy.yml"
@@ -55,6 +56,38 @@ jobs:
             echo "::endgroup::"
           done
 
+  frontend:
+    name: Frontend (lint, types, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend-nextjs
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend-nextjs/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Vulnérabilités des dépendances de production
+        run: npm audit --omit=dev --audit-level=high
+      - name: Paquet autonome pour App Service
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          if [ -d public ]; then cp -r public .next/standalone/public; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-standalone
+          path: frontend-nextjs/.next/standalone
+          include-hidden-files: true
+          retention-days: 3
+
   deploy-services:
     name: Déployer ${{ matrix.service }}
     needs: tests
@@ -102,9 +135,27 @@ jobs:
           scm-do-build-during-deployment: true
           enable-oryx-build: true
 
+  deploy-frontend:
+    name: Déployer frontend-nextjs
+    needs: [tests, frontend]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-standalone
+          path: frontend
+      # Paquet déjà construit : App Service ne doit pas relancer de build (SCM_DO_BUILD_DURING_DEPLOYMENT=false).
+      - name: Déployer sur Azure App Service (Node)
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: app-beacom-frontend
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE_FRONTEND }}
+          package: ./frontend
+
   verifier:
     name: Vérification après déploiement
-    needs: [deploy-services]
+    needs: [deploy-services, deploy-frontend]
     runs-on: ubuntu-latest
     steps:
       - name: Appeler /health de chaque service
@@ -116,4 +167,10 @@ jobs:
               [ "$i" = 6 ] && { echo "$app ne répond pas"; exit 1; }
               sleep 20
             done
+          done
+          url="https://app-beacom-frontend.azurewebsites.net/connexion"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 15 -o /dev/null "$url"; then echo "frontend OK"; break; fi
+            [ "$i" = 6 ] && { echo "frontend ne répond pas"; exit 1; }
+            sleep 20
           done

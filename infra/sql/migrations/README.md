@@ -10,11 +10,17 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_utilisateurs   -f 001_multi_clien
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_etablissements -f 001_multi_clients_etablissements.sql
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_collecte       -f 001_multi_clients_collecte.sql
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f 001_multi_clients_analyses.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_etablissements -f 002_jeton_public_etablissements.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f 003_analyses_par_etablissement.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f 004_rapports_hebdomadaires.sql
 ```
 
 | Migration | Effet |
 |---|---|
 | `001_multi_clients_*` | Ajoute les organisations. Les données existantes sont rattachées à l'organisation 1, « Organisation par défaut », au plan `entreprise` pour ne pas les soumettre aux limites. |
+| `002_jeton_public_etablissements` | Jeton public de collecte (lien et QR code), un par établissement, unique et aléatoire. |
+| `003_analyses_par_etablissement` | Établissement et date de l'avis sur les analyses, tables `mots_cles` et `alertes`. Les analyses existantes gardent `etablissement_id` à NULL. |
+| `004_rapports_hebdomadaires` | Table `rapports` (un rapport par organisation et par semaine). |
 
 Avant de déployer la version multi-clients, laissez la file `avis-a-analyser` se vider : un ancien message sans
 `organisation_id` serait refusé par `service-analyses` et finirait dans la poison queue. On le rattrape ensuite avec

@@ -1,2 +1,3 @@
 azure-functions
 azure-ai-textanalytics>=5.3
+azure-communication-email>=1.0

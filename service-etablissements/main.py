@@ -1,4 +1,5 @@
 import os
+import re
 from contextlib import contextmanager
 
 import psycopg
@@ -7,12 +8,15 @@ from psycopg.errors import UniqueViolation
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
-from auth import configurer, exiger_roles, limite_du_plan, utilisateur_courant
+from auth import cle_interne, configurer, exiger_roles, limite_du_plan, limiter_debit, utilisateur_courant
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
+# Format d'un jeton public : on rejette tout autre texte sans interroger la base.
+MOTIF_JETON = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
 app = FastAPI(title="service-etablissements")
-configurer(app)
+configurer(app, DATABASE_URL)
 
 
 @contextmanager
@@ -98,3 +102,48 @@ def supprimer(etab_id: int, user: dict = Depends(exiger_roles("admin"))):
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Établissement introuvable")
+
+
+@app.post("/etablissements/{etab_id}/jeton-public")
+def regenerer_jeton(etab_id: int, user: dict = Depends(exiger_roles("admin"))):
+    """Nouveau jeton public : l'ancien lien et l'ancien QR code cessent de fonctionner (ex. affiche détournée)."""
+    with db() as conn:
+        row = conn.execute(
+            """UPDATE etablissements SET jeton_public = replace(gen_random_uuid()::text, '-', '')
+               WHERE id = %s AND organisation_id = %s RETURNING id, jeton_public""",
+            (etab_id, user["organisation_id"]),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Établissement introuvable")
+    return row
+
+
+def par_jeton(jeton: str, colonnes: str) -> dict:
+    if not MOTIF_JETON.fullmatch(jeton):
+        raise HTTPException(404, "Lien inconnu")
+    with db() as conn:
+        row = conn.execute(f"SELECT {colonnes} FROM etablissements WHERE jeton_public = %s", (jeton,)).fetchone()
+    if not row:
+        raise HTTPException(404, "Lien inconnu")
+    return row
+
+
+@app.get("/public/etablissements/{jeton}", dependencies=[Depends(limiter_debit("public-etablissement", 60, 60))])
+def etablissement_public(jeton: str):
+    """Route publique de la page de dépôt d'avis : le strict nécessaire pour l'afficher, rien d'autre."""
+    return par_jeton(jeton, "nom, categorie, ville")
+
+
+@app.get("/interne/etablissements/par-jeton/{jeton}", dependencies=[Depends(cle_interne)])
+def resoudre_jeton(jeton: str):
+    """Route interne (service-collecte) : à quel établissement et à quelle organisation appartient ce jeton."""
+    return par_jeton(jeton, "id, organisation_id, nom")
+
+
+@app.get("/interne/organisations/{organisation_id}/etablissements", dependencies=[Depends(cle_interne)])
+def etablissements_interne(organisation_id: int):
+    """Route interne (Function) : noms des établissements d'une organisation, pour rédiger le rapport hebdomadaire."""
+    with db() as conn:
+        return conn.execute(
+            "SELECT id, nom FROM etablissements WHERE organisation_id = %s ORDER BY id", (organisation_id,)
+        ).fetchall()

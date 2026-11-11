@@ -83,3 +83,20 @@ def test_migration_002_jeton_public():
     with psycopg.connect(neuve, autocommit=True) as c:
         c.execute((SQL / "01_etablissements.sql").read_text())
         c.execute((SQL / "migrations" / "002_jeton_public_etablissements.sql").read_text())
+
+
+def test_migration_003_analyses():
+    url = base_vide("test_migration_003")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "03_analyses.sql").read_text())
+        c.execute("INSERT INTO analyses_sentiment (avis_id, sentiment) VALUES (1, 'negative')")
+        for _ in range(2):
+            c.execute((SQL / "migrations" / "001_multi_clients_analyses.sql").read_text())
+            c.execute((SQL / "migrations" / "003_analyses_par_etablissement.sql").read_text())
+        assert c.execute("SELECT organisation_id, etablissement_id FROM analyses_sentiment").fetchall() == [(1, None)]
+        assert c.execute("SELECT COUNT(*) FROM mots_cles").fetchone() == (0,)
+        assert c.execute("SELECT COUNT(*) FROM alertes").fetchone() == (0,)
+    neuve = base_vide("test_neuve_003")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "03_analyses.sql").read_text())
+        c.execute((SQL / "migrations" / "003_analyses_par_etablissement.sql").read_text())

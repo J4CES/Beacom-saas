@@ -1,6 +1,9 @@
+import csv
+import io
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -8,17 +11,30 @@ from typing import Literal
 
 import psycopg
 from azure.storage.queue import QueueClient, TextBase64EncodePolicy
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.security import HTTPAuthorizationCredentials
 from psycopg.rows import dict_row
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from auth import bearer, cle_interne, configurer, exiger_roles, limite_du_plan, utilisateur_courant
+from auth import (
+    bearer,
+    cle_interne,
+    configurer,
+    exiger_roles,
+    limite_du_plan,
+    limiter_debit,
+    utilisateur_courant,
+)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 STORAGE_CONNECTION_STRING = os.environ["STORAGE_CONNECTION_STRING"]
 QUEUE_NAME = os.getenv("QUEUE_NAME", "avis-a-analyser")
 ETABLISSEMENTS_API_URL = os.getenv("ETABLISSEMENTS_API_URL", "")
+UTILISATEURS_API_URL = os.getenv("UTILISATEURS_API_URL", "")
+
+IMPORT_TAILLE_MAX = 1_000_000  # octets
+IMPORT_LIGNES_MAX = 1000
+MOTIF_JETON = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 logger = logging.getLogger("collecte")
 app = FastAPI(title="service-collecte")
@@ -53,23 +69,58 @@ def marquer_en_file(conn: psycopg.Connection, avis_id: int) -> None:
     conn.commit()
 
 
+def appel_get(url: str, headers: dict, service: str) -> dict:
+    """GET synchrone vers un autre service. 404 -> None ; autre erreur -> 502 ; injoignable -> 503."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=5) as rep:
+            return json.loads(rep.read() or b"null")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise HTTPException(502, f"{service} a répondu {exc.code}")
+    except (urllib.error.URLError, TimeoutError):
+        raise HTTPException(503, f"{service} injoignable")
+
+
 def verifier_etablissement(etab_id: int, token: str) -> None:
     """Appel REST synchrone vers service-etablissements (le jeton de l'utilisateur est transmis)."""
     if not ETABLISSEMENTS_API_URL:
         logger.warning("ETABLISSEMENTS_API_URL non défini : existence de l'établissement non vérifiée")
         return
-    req = urllib.request.Request(
+    trouve = appel_get(
         f"{ETABLISSEMENTS_API_URL.rstrip('/')}/etablissements/{etab_id}",
-        headers={"Authorization": f"Bearer {token}"},
+        {"Authorization": f"Bearer {token}"},
+        "service-etablissements",
     )
-    try:
-        urllib.request.urlopen(req, timeout=5).read()
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            raise HTTPException(422, "Établissement inexistant")
-        raise HTTPException(502, f"service-etablissements a répondu {exc.code}")
-    except (urllib.error.URLError, TimeoutError):
-        raise HTTPException(503, "service-etablissements injoignable")
+    if trouve is None:
+        raise HTTPException(422, "Établissement inexistant")
+
+
+def resoudre_jeton_public(jeton: str) -> dict:
+    """Route interne de service-etablissements : établissement et organisation d'un jeton public."""
+    if not MOTIF_JETON.fullmatch(jeton) or not ETABLISSEMENTS_API_URL:
+        raise HTTPException(404, "Lien inconnu")
+    etab = appel_get(
+        f"{ETABLISSEMENTS_API_URL.rstrip('/')}/interne/etablissements/par-jeton/{jeton}",
+        {"X-API-Key": os.getenv("INTERNAL_API_KEY", "")},
+        "service-etablissements",
+    )
+    if etab is None:
+        raise HTTPException(404, "Lien inconnu")
+    return etab
+
+
+def plan_de_l_organisation(organisation_id: int) -> str:
+    """Plan d'une organisation, pour un dépôt sans jeton utilisateur. À défaut d'information : plan gratuit."""
+    if not UTILISATEURS_API_URL:
+        logger.warning("UTILISATEURS_API_URL non défini : limites du plan gratuit appliquées")
+        return "gratuit"
+    org = appel_get(
+        f"{UTILISATEURS_API_URL.rstrip('/')}/interne/organisations/{organisation_id}",
+        {"X-API-Key": os.getenv("INTERNAL_API_KEY", "")},
+        "service-utilisateurs",
+    )
+    return org["plan"] if org else "gratuit"
 
 
 class AvisIn(BaseModel):
@@ -82,8 +133,86 @@ class AvisIn(BaseModel):
     source: str | None = Field(default=None, max_length=100)
 
 
+class AvisPublicIn(BaseModel):
+    """Avis déposé par un client final depuis le lien public ou le QR code. Validation stricte."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    texte: str = Field(min_length=5, max_length=2000)
+    note: int = Field(ge=1, le=5)
+    auteur: str | None = Field(default=None, max_length=100)
+    langue: str | None = Field(default=None, pattern=r"^[a-z]{2}(-[A-Z]{2})?$")
+    # Champ piège : caché aux humains par le formulaire, rempli par les robots qui complètent tout.
+    site_web: str | None = Field(default=None, max_length=500)
+
+
+class LigneCsv(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    texte: str = Field(min_length=1, max_length=5000)
+    note: int | None = Field(default=None, ge=1, le=5)
+    auteur: str | None = Field(default=None, max_length=255)
+    langue: str | None = Field(default=None, min_length=2, max_length=10)
+    date_avis: datetime | None = None
+    source: str | None = Field(default=None, max_length=100)
+
+    @field_validator("note", "auteur", "langue", "date_avis", "source", mode="before")
+    @classmethod
+    def vide_devient_none(cls, v):
+        return None if isinstance(v, str) and not v.strip() else v
+
+
 class StatutIn(BaseModel):
     statut: Literal["en_file", "analyse"]
+
+
+def enregistrer_et_publier(org_id: int, plan: str, etab_id: int, avis: list[dict]) -> list[int]:
+    """Enregistre des avis (tout ou rien), valide la transaction, puis les publie dans la file.
+
+    Le quota mensuel du plan est vérifié sous verrou par organisation. Les avis dont l'envoi en file échoue restent
+    'nouveau' : POST /avis/renvoyer-nouveaux les rattrape.
+    """
+    maximum = limite_du_plan(plan, "avis_par_mois")
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+        if maximum is not None:
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (org_id,))
+            nb = conn.execute(
+                """SELECT COUNT(*) AS nb FROM avis
+                   WHERE organisation_id = %s AND collecte_le >= date_trunc('month', now())""",
+                (org_id,),
+            ).fetchone()["nb"]
+            if nb + len(avis) > maximum:
+                raise HTTPException(
+                    402,
+                    f"Le plan {plan} est limité à {maximum} avis par mois ({nb} déjà collectés). "
+                    "Passez à un plan supérieur pour en collecter davantage.",
+                )
+        lignes = [
+            conn.execute(
+                """INSERT INTO avis (organisation_id, etablissement_id, auteur, note, texte, langue, date_avis, source)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, organisation_id, texte, langue""",
+                (org_id, etab_id, a.get("auteur"), a.get("note"), a["texte"], a.get("langue"),
+                 a.get("date_avis"), a.get("source")),
+            ).fetchone()
+            for a in avis
+        ]
+        # Les avis doivent être visibles en base AVANT d'être en file : sinon la Function, plus rapide,
+        # recevrait un 404 en mettant à jour leur statut.
+        conn.commit()
+
+        queue = get_queue()
+        for i, ligne in enumerate(lignes):
+            try:
+                queue.send_message(message_file(ligne))
+            except Exception as exc:
+                logger.exception("Envoi en file échoué pour l'avis %s", ligne["id"])
+                raise HTTPException(
+                    502,
+                    f"{len(lignes)} avis enregistrés, {i} envoyés en file avant l'échec : "
+                    "les autres seront renvoyés par POST /avis/renvoyer-nouveaux",
+                ) from exc
+            marquer_en_file(conn, ligne["id"])
+    return [ligne["id"] for ligne in lignes]
 
 
 @app.get("/health")
@@ -99,50 +228,76 @@ def collecter(
 ):
     # service-etablissements filtre par organisation : un établissement d'un autre client y est introuvable.
     verifier_etablissement(avis.etablissement_id, creds.credentials)
-    org_id = user["organisation_id"]
-    maximum = limite_du_plan(user["plan"], "avis_par_mois")
+    champs = avis.model_dump(exclude={"etablissement_id"})
+    (avis_id,) = enregistrer_et_publier(user["organisation_id"], user["plan"], avis.etablissement_id, [champs])
+    return {"id": avis_id, "statut": "en_file"}
 
-    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
-        if maximum is not None:
-            conn.execute("SELECT pg_advisory_xact_lock(%s)", (org_id,))
-            nb = conn.execute(
-                """SELECT COUNT(*) AS nb FROM avis
-                   WHERE organisation_id = %s AND collecte_le >= date_trunc('month', now())""",
-                (org_id,),
-            ).fetchone()["nb"]
-            if nb >= maximum:
-                raise HTTPException(
-                    402,
-                    f"Le plan {user['plan']} est limité à {maximum} avis par mois. "
-                    "Passez à un plan supérieur pour en collecter davantage.",
-                )
-        ligne = conn.execute(
-            """INSERT INTO avis (organisation_id, etablissement_id, auteur, note, texte, langue, date_avis, source)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, organisation_id, texte, langue""",
-            (
-                org_id,
-                avis.etablissement_id,
-                avis.auteur,
-                avis.note,
-                avis.texte,
-                avis.langue,
-                avis.date_avis,
-                avis.source,
-            ),
-        ).fetchone()
-        # L'avis doit être visible en base AVANT d'être en file : sinon la Function, plus rapide,
-        # recevrait un 404 en mettant à jour son statut.
-        conn.commit()
 
+@app.post(
+    "/public/avis/{jeton}",
+    status_code=201,
+    dependencies=[Depends(limiter_debit("public-avis", 10, 600))],
+)
+def deposer_avis_public(jeton: str, avis: AvisPublicIn):
+    """Route publique, sans authentification : un client final dépose un avis via le lien ou le QR code."""
+    etab = resoudre_jeton_public(jeton)
+    if avis.site_web:
+        # Robot probable : on répond comme si tout allait bien, sans rien enregistrer.
+        logger.info("Champ piège rempli sur le lien de l'établissement %s : avis ignoré", etab["id"])
+        return {"statut": "recu"}
+    champs = avis.model_dump(exclude={"site_web"}) | {"source": "lien_public"}
+    plan = plan_de_l_organisation(etab["organisation_id"])
+    enregistrer_et_publier(etab["organisation_id"], plan, etab["id"], [champs])
+    # Ni identifiant ni détail interne dans la réponse publique.
+    return {"statut": "recu"}
+
+
+def lire_csv(contenu: bytes) -> list[dict]:
+    """CSV UTF-8 (avec ou sans BOM), séparateur ',' ou ';' (Excel en français). Colonne obligatoire : texte."""
+    try:
+        texte = contenu.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(422, "Le fichier doit être encodé en UTF-8")
+    premiere_ligne = texte.split("\n", 1)[0]
+    separateur = ";" if premiere_ligne.count(";") > premiere_ligne.count(",") else ","
+    lecteur = csv.DictReader(io.StringIO(texte), delimiter=separateur)
+    colonnes = {c.strip().lower() for c in (lecteur.fieldnames or [])}
+    if "texte" not in colonnes:
+        raise HTTPException(422, "Colonne obligatoire absente : texte (colonnes possibles : texte, note, auteur, "
+                                 "langue, date_avis, source)")
+    avis, erreurs = [], []
+    for numero, brute in enumerate(lecteur, start=2):  # la ligne 1 est l'en-tête
+        if numero - 1 > IMPORT_LIGNES_MAX:
+            raise HTTPException(422, f"Au plus {IMPORT_LIGNES_MAX} avis par import")
+        ligne = {(k or "").strip().lower(): v for k, v in brute.items()}
         try:
-            get_queue().send_message(message_file(ligne))
-        except Exception as exc:
-            # L'avis reste en 'nouveau' : POST /avis/renvoyer-nouveaux le renverra plus tard.
-            logger.exception("Envoi en file échoué pour l'avis %s", ligne["id"])
-            raise HTTPException(502, f"Avis enregistré (id={ligne['id']}) mais envoi en file échoué") from exc
+            champs = LigneCsv(**{k: v for k, v in ligne.items() if k in LigneCsv.model_fields})
+            avis.append(champs.model_dump() | {"source": champs.source or "import_csv"})
+        except ValidationError as exc:
+            erreurs.append({"ligne": numero, "erreur": "; ".join(e["msg"] for e in exc.errors())})
+    if erreurs:
+        # Tout ou rien : un fichier partiellement importé serait difficile à corriger puis à réimporter.
+        raise HTTPException(422, {"message": "Import refusé : corrigez ces lignes", "erreurs": erreurs[:50]})
+    if not avis:
+        raise HTTPException(422, "Le fichier ne contient aucun avis")
+    return avis
 
-        marquer_en_file(conn, ligne["id"])
-    return {"id": ligne["id"], "statut": "en_file"}
+
+@app.post("/avis/import", status_code=201)
+async def importer(
+    etablissement_id: int,
+    fichier: UploadFile = File(...),
+    user: dict = Depends(exiger_roles("admin", "gestionnaire")),
+    creds: HTTPAuthorizationCredentials = Depends(bearer),
+):
+    """Importe des avis depuis un CSV pour un établissement de l'organisation (tout ou rien)."""
+    contenu = await fichier.read(IMPORT_TAILLE_MAX + 1)
+    if len(contenu) > IMPORT_TAILLE_MAX:
+        raise HTTPException(413, f"Fichier trop volumineux (maximum {IMPORT_TAILLE_MAX // 1000} ko)")
+    avis = lire_csv(contenu)
+    verifier_etablissement(etablissement_id, creds.credentials)
+    ids = enregistrer_et_publier(user["organisation_id"], user["plan"], etablissement_id, avis)
+    return {"importes": len(ids)}
 
 
 @app.get("/avis")

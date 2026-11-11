@@ -46,6 +46,8 @@ jobs:
         run: |
           pip install -r requirements-dev.txt -r service-utilisateurs/requirements.txt \
             -r service-collecte/requirements.txt -r function-nlp/requirements.txt
+      - name: Lint Python (ruff)
+        run: pip install ruff && ruff check .
       - name: auth.py identique dans les 4 services
         run: test "$(md5sum service-*/auth.py | cut -d' ' -f1 | sort -u | wc -l)" = 1
       - name: Tests

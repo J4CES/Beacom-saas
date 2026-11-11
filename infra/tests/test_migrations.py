@@ -100,3 +100,17 @@ def test_migration_003_analyses():
     with psycopg.connect(neuve, autocommit=True) as c:
         c.execute((SQL / "03_analyses.sql").read_text())
         c.execute((SQL / "migrations" / "003_analyses_par_etablissement.sql").read_text())
+
+
+def test_migration_004_rapports():
+    url = base_vide("test_migration_004")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute((AVANT / "03_analyses.sql").read_text())
+        for _ in range(2):
+            for m in ("001_multi_clients_analyses", "003_analyses_par_etablissement", "004_rapports_hebdomadaires"):
+                c.execute((SQL / "migrations" / f"{m}.sql").read_text())
+        assert c.execute("SELECT COUNT(*) FROM rapports").fetchone() == (0,)
+    neuve = base_vide("test_neuve_004")
+    with psycopg.connect(neuve, autocommit=True) as c:
+        c.execute((SQL / "03_analyses.sql").read_text())
+        c.execute((SQL / "migrations" / "004_rapports_hebdomadaires.sql").read_text())

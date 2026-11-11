@@ -26,11 +26,14 @@ uvicorn main:app --reload --port 8003
 | `GET /analyses/themes?sentiment=negative&etablissement_id=&limit=10` | tout utilisateur connecté : mots-clés les plus fréquents |
 | `GET /analyses/alertes?traitee=false&etablissement_id=` | tout utilisateur connecté |
 | `PATCH /analyses/alertes/{id}` | admin, gestionnaire : `{traitee: true}` |
+| `POST /analyses/interne/rapports-hebdomadaires?semaine_debut=` | clé interne (Function planifiée) : un rapport par organisation active, idempotent ; par défaut la semaine écoulée |
+| `GET /analyses/rapports?limit=12` | tout utilisateur connecté : rapports hebdomadaires de l'organisation |
 | `GET /health` | public |
 
 Les routes de lecture ne renvoient que les analyses de l'organisation du jeton (404 pour celle d'un autre client).
 
-Tables : `analyses_sentiment`, `mots_cles` (normalisés en minuscules, remplacés si le message est rejoué) et `alertes`.
+Tables : `analyses_sentiment`, `mots_cles` (normalisés en minuscules, remplacés si le message est rejoué), `alertes`
+et `rapports` (un par organisation et par semaine, contenu JSON).
 La tendance date un avis par sa `date_avis` si elle est connue (import CSV), sinon par la date d'analyse.
 Les analyses antérieures à la migration 003 n'ont pas d'établissement : elles comptent dans les totaux, pas dans les filtres.
 

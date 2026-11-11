@@ -1,10 +1,11 @@
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Query
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field, field_validator
 
 from auth import cle_interne, configurer, exiger_roles, utilisateur_courant
@@ -241,3 +242,102 @@ def par_avis(avis_id: int, user: dict = Depends(utilisateur_courant)):
         # Même réponse pour une analyse inexistante et pour celle d'une autre organisation.
         raise HTTPException(404, "Analyse introuvable")
     return row
+
+
+def calculer_rapport(conn: psycopg.Connection, organisation_id: int, debut: date) -> dict:
+    """Synthèse d'une semaine (lundi -> dimanche) pour une organisation, comparée à la semaine précédente."""
+    fin = debut + timedelta(days=7)
+
+    def repartition(depuis: date, jusqu_a: date) -> dict:
+        lignes = conn.execute(
+            """SELECT sentiment, COUNT(*) AS total FROM analyses_sentiment
+               WHERE organisation_id = %s AND COALESCE(date_avis, analyse_le) >= %s
+                 AND COALESCE(date_avis, analyse_le) < %s
+               GROUP BY sentiment""",
+            (organisation_id, depuis, jusqu_a),
+        ).fetchall()
+        par_sentiment = {s: 0 for s in ("positive", "neutral", "negative", "mixed")}
+        par_sentiment.update({r["sentiment"]: r["total"] for r in lignes})
+        total = sum(par_sentiment.values())
+        return {
+            "total": total,
+            "par_sentiment": par_sentiment,
+            "part_negative": round(par_sentiment["negative"] / total, 3) if total else None,
+        }
+
+    semaine = repartition(debut, fin)
+    precedente = repartition(debut - timedelta(days=7), debut)
+    themes = conn.execute(
+        """SELECT m.mot_cle, COUNT(*) AS total FROM mots_cles m
+           JOIN analyses_sentiment a ON a.avis_id = m.avis_id
+           WHERE m.organisation_id = %s AND m.sentiment = 'negative'
+             AND COALESCE(a.date_avis, a.analyse_le) >= %s AND COALESCE(a.date_avis, a.analyse_le) < %s
+           GROUP BY m.mot_cle ORDER BY total DESC, m.mot_cle LIMIT 5""",
+        (organisation_id, debut, fin),
+    ).fetchall()
+    etablissements = conn.execute(
+        """SELECT etablissement_id, COUNT(*) AS total,
+                  COUNT(*) FILTER (WHERE sentiment = 'negative') AS negative
+           FROM analyses_sentiment
+           WHERE organisation_id = %s AND etablissement_id IS NOT NULL
+             AND COALESCE(date_avis, analyse_le) >= %s AND COALESCE(date_avis, analyse_le) < %s
+           GROUP BY etablissement_id ORDER BY total DESC""",
+        (organisation_id, debut, fin),
+    ).fetchall()
+    alertes_semaine = conn.execute(
+        "SELECT COUNT(*) AS n FROM alertes WHERE organisation_id = %s AND creee_le >= %s AND creee_le < %s",
+        (organisation_id, debut, fin),
+    ).fetchone()["n"]
+    return {
+        "semaine_debut": debut.isoformat(),
+        "semaine_fin": (fin - timedelta(days=1)).isoformat(),
+        **semaine,
+        "semaine_precedente": precedente,
+        "themes_negatifs": themes,
+        "alertes": alertes_semaine,
+        "etablissements": etablissements,
+    }
+
+
+@app.post("/analyses/interne/rapports-hebdomadaires", dependencies=[Depends(cle_interne)])
+def generer_rapports(semaine_debut: date | None = None):
+    """Route interne (Function planifiée du lundi) : un rapport par organisation active la semaine passée.
+
+    Par défaut, la semaine écoulée (lundi dernier -> dimanche). Idempotente : relancer remplace les rapports.
+    Une organisation sans aucun avis cette semaine-là n'a pas de rapport.
+    """
+    if semaine_debut is None:
+        aujourd_hui = date.today()
+        semaine_debut = aujourd_hui - timedelta(days=aujourd_hui.weekday() + 7)
+    elif semaine_debut.weekday() != 0:
+        raise HTTPException(422, "semaine_debut doit être un lundi")
+    fin = semaine_debut + timedelta(days=7)
+    rapports = []
+    with db() as conn:
+        organisations = conn.execute(
+            """SELECT DISTINCT organisation_id FROM analyses_sentiment
+               WHERE COALESCE(date_avis, analyse_le) >= %s AND COALESCE(date_avis, analyse_le) < %s
+               ORDER BY organisation_id""",
+            (semaine_debut, fin),
+        ).fetchall()
+        for o in organisations:
+            contenu = calculer_rapport(conn, o["organisation_id"], semaine_debut)
+            conn.execute(
+                """INSERT INTO rapports (organisation_id, semaine_debut, contenu) VALUES (%s, %s, %s)
+                   ON CONFLICT (organisation_id, semaine_debut)
+                   DO UPDATE SET contenu = EXCLUDED.contenu, cree_le = now()""",
+                (o["organisation_id"], semaine_debut, Jsonb(contenu)),
+            )
+            rapports.append({"organisation_id": o["organisation_id"], "contenu": contenu})
+    return {"semaine_debut": semaine_debut.isoformat(), "rapports": rapports}
+
+
+@app.get("/analyses/rapports")
+def lister_rapports(limit: int = Query(12, ge=1, le=104), user: dict = Depends(utilisateur_courant)):
+    """Rapports hebdomadaires de l'organisation, du plus récent au plus ancien."""
+    with db() as conn:
+        return conn.execute(
+            """SELECT semaine_debut, contenu, cree_le FROM rapports WHERE organisation_id = %s
+               ORDER BY semaine_debut DESC LIMIT %s""",
+            (user["organisation_id"], limit),
+        ).fetchall()

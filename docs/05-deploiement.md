@@ -27,6 +27,7 @@ for b in utilisateurs etablissements collecte analyses; do
 done
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_etablissements -f migrations/002_jeton_public_etablissements.sql
 sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f migrations/003_analyses_par_etablissement.sql
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d db_analyses       -f migrations/004_rapports_hebdomadaires.sql
 ```
 
 ## 2. Réseau : permettre aux App Service de joindre PostgreSQL
@@ -109,7 +110,17 @@ az functionapp config appsettings set -g $RG -n func-beacom-nlp --settings \
   ANALYSES_API_URL="https://app-beacom-analyses.azurewebsites.net" \
   COLLECTE_API_URL="https://app-beacom-collecte.azurewebsites.net" \
   UTILISATEURS_API_URL="https://app-beacom-utilisateurs.azurewebsites.net" \
+  ETABLISSEMENTS_API_URL="https://app-beacom-etablissements.azurewebsites.net" \
   SEUIL_ALERTE=0.8 FRONTEND_URL="https://<URL_FRONTEND>"
+```
+
+**Lancer le rapport hebdomadaire à la demande** (démonstration, sans attendre lundi) : appel de l'API d'administration
+de la Function avec la clé maître (secret : ne pas la commiter).
+
+```bash
+CLE_MAITRE=$(az functionapp keys list -g $RG -n func-beacom-nlp --query masterKey -o tsv)
+curl -s -X POST https://func-beacom-nlp.azurewebsites.net/admin/functions/rapport_hebdomadaire \
+  -H "x-functions-key: $CLE_MAITRE" -H 'Content-Type: application/json' -d '{}'
 ```
 
 **E-mails d'alerte (facultatif)** : Azure Communication Services avec un domaine géré par Azure. Sans ces paramètres,
@@ -169,6 +180,7 @@ curl -s "$A/analyses/resume?etablissement_id=1" -H "Authorization: Bearer $TOKEN
 curl -s "$A/analyses/tendance?periode=jour" -H "Authorization: Bearer $TOKEN"
 curl -s "$A/analyses/themes?sentiment=negative" -H "Authorization: Bearer $TOKEN"
 curl -s $A/analyses/alertes -H "Authorization: Bearer $TOKEN"   # l'avis « café froid » du 4 bis
+curl -s $A/analyses/rapports -H "Authorization: Bearer $TOKEN"   # après le lundi, ou après un lancement à la demande
 curl -s "$C/avis?etablissement_id=1" -H "Authorization: Bearer $TOKEN"   # statut passé à « analyse »
 
 # 4 bis. Dépôt public par un client final, sans compte (jeton_public renvoyé à la création de l'établissement)

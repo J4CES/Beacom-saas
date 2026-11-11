@@ -55,5 +55,6 @@ Priorités MoSCoW : **M** = indispensable pour la démonstration, **S** = souhai
 | D3 | gérant | être alerté d'un avis très négatif (tableau de bord + e-mail) | S | Function et API faites |
 | D4 | gérant | voir l'évolution des sentiments par jour ou par semaine | S | API faite (écran à faire) |
 | D5 | gérant | savoir de quoi se plaignent les clients (mots-clés des avis négatifs) | S | Function et API faites |
+| D6 | gérant | recevoir chaque lundi un rapport de la semaine | S | Function planifiée et API faites |
 | F1 | utilisateur | une interface web pour tout cela | M | À faire (`frontend-nextjs`) |
 | I1 | gestionnaire | importer des avis depuis un fichier CSV | C | API faite |

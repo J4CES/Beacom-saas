@@ -1,6 +1,6 @@
 """Azure Function déclenchée par la file `avis-a-analyser`.
 
-Entrée  : message JSON {avis_id, texte, langue}
+Entrée  : message JSON {avis_id, organisation_id, texte, langue}
 Traitement : analyse de sentiment avec Azure AI Language
 Sortie  : résultat envoyé à service-analyses (qui possède db_analyses), puis statut de l'avis mis à jour
           dans service-collecte (qui possède db_collecte). La Function n'accède à aucune base directement.
@@ -40,6 +40,8 @@ def _appel_interne(methode: str, url: str, corps: dict) -> None:
 def analyser_avis(msg: func.QueueMessage) -> None:
     payload = json.loads(msg.get_body().decode("utf-8"))
     avis_id = payload["avis_id"]
+    # Un message sans organisation (antérieur au multi-clients) lève KeyError : il part en poison queue.
+    organisation_id = payload["organisation_id"]
     texte = (payload.get("texte") or "").strip()
     if not texte:
         logging.warning("Avis %s sans texte : message ignoré", avis_id)
@@ -66,6 +68,7 @@ def analyser_avis(msg: func.QueueMessage) -> None:
         f"{analyses_url}/analyses/interne",
         {
             "avis_id": avis_id,
+            "organisation_id": organisation_id,
             "sentiment": resultat.sentiment,
             "score_positif": scores.positive,
             "score_neutre": scores.neutral,

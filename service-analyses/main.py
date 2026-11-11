@@ -15,6 +15,7 @@ configurer(app)
 
 class AnalyseIn(BaseModel):
     avis_id: int
+    organisation_id: int
     sentiment: str = Field(pattern="^(positive|negative|neutral|mixed)$")
     score_positif: float = Field(ge=0, le=1)
     score_neutre: float = Field(ge=0, le=1)
@@ -31,8 +32,9 @@ def enregistrer(a: AnalyseIn):
     """Route interne, appelée par l'Azure Function. Idempotente : rejouer le message met à jour la ligne."""
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
         return conn.execute(
-            """INSERT INTO analyses_sentiment (avis_id, sentiment, score_positif, score_neutre, score_negatif)
-               VALUES (%s, %s, %s, %s, %s)
+            """INSERT INTO analyses_sentiment
+                   (organisation_id, avis_id, sentiment, score_positif, score_neutre, score_negatif)
+               VALUES (%s, %s, %s, %s, %s, %s)
                ON CONFLICT (avis_id) DO UPDATE SET
                    sentiment = EXCLUDED.sentiment,
                    score_positif = EXCLUDED.score_positif,
@@ -40,37 +42,46 @@ def enregistrer(a: AnalyseIn):
                    score_negatif = EXCLUDED.score_negatif,
                    analyse_le = now()
                RETURNING *""",
-            (a.avis_id, a.sentiment, a.score_positif, a.score_neutre, a.score_negatif),
+            (a.organisation_id, a.avis_id, a.sentiment, a.score_positif, a.score_neutre, a.score_negatif),
         ).fetchone()
 
 
-@app.get("/analyses", dependencies=[Depends(utilisateur_courant)])
-def lister(sentiment: str | None = None, limit: int = 100, offset: int = 0):
-    limit = min(limit, 500)
+@app.get("/analyses")
+def lister(
+    sentiment: str | None = None, limit: int = 100, offset: int = 0, user: dict = Depends(utilisateur_courant)
+):
+    params: list = [user["organisation_id"]]
+    filtre = ""
+    if sentiment:
+        filtre = " AND sentiment = %s"
+        params.append(sentiment)
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
-        if sentiment:
-            return conn.execute(
-                "SELECT * FROM analyses_sentiment WHERE sentiment = %s ORDER BY id DESC LIMIT %s OFFSET %s",
-                (sentiment, limit, offset),
-            ).fetchall()
         return conn.execute(
-            "SELECT * FROM analyses_sentiment ORDER BY id DESC LIMIT %s OFFSET %s", (limit, offset)
+            f"""SELECT * FROM analyses_sentiment WHERE organisation_id = %s{filtre}
+                ORDER BY id DESC LIMIT %s OFFSET %s""",
+            (*params, min(limit, 500), max(offset, 0)),
         ).fetchall()
 
 
-@app.get("/analyses/resume", dependencies=[Depends(utilisateur_courant)])
-def resume():
-    """Répartition des sentiments (tableau de bord)."""
+@app.get("/analyses/resume")
+def resume(user: dict = Depends(utilisateur_courant)):
+    """Répartition des sentiments de l'organisation (tableau de bord)."""
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
         return conn.execute(
-            "SELECT sentiment, COUNT(*) AS total FROM analyses_sentiment GROUP BY sentiment ORDER BY total DESC"
+            """SELECT sentiment, COUNT(*) AS total FROM analyses_sentiment WHERE organisation_id = %s
+               GROUP BY sentiment ORDER BY total DESC""",
+            (user["organisation_id"],),
         ).fetchall()
 
 
-@app.get("/analyses/avis/{avis_id}", dependencies=[Depends(utilisateur_courant)])
-def par_avis(avis_id: int):
+@app.get("/analyses/avis/{avis_id}")
+def par_avis(avis_id: int, user: dict = Depends(utilisateur_courant)):
     with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
-        row = conn.execute("SELECT * FROM analyses_sentiment WHERE avis_id = %s", (avis_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM analyses_sentiment WHERE avis_id = %s AND organisation_id = %s",
+            (avis_id, user["organisation_id"]),
+        ).fetchone()
     if not row:
+        # Même réponse pour une analyse inexistante et pour celle d'une autre organisation.
         raise HTTPException(404, "Analyse introuvable")
     return row

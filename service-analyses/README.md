@@ -17,8 +17,12 @@ uvicorn main:app --reload --port 8003
 
 | Route | Accès |
 |---|---|
-| `POST /analyses/interne` | clé interne `X-API-Key` (Azure Function), idempotente |
+| `POST /analyses/interne` | clé interne `X-API-Key` (Azure Function), idempotente ; `organisation_id` obligatoire |
 | `GET /analyses?sentiment=&limit=&offset=` | tout utilisateur connecté |
 | `GET /analyses/avis/{avis_id}` | tout utilisateur connecté |
 | `GET /analyses/resume` | tout utilisateur connecté : nombre d'avis par sentiment (tableau de bord) |
 | `GET /health` | public |
+
+Les routes de lecture ne renvoient que les analyses de l'organisation du jeton (404 pour celle d'un autre client).
+
+Tests : `./scripts/lancer-tests.sh analyses` depuis la racine du dépôt.

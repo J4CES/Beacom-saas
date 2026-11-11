@@ -224,3 +224,61 @@ curl -s -o /dev/null -w '%{http_code}\n' $E/etablissements/1 -H "Authorization: 
 À montrer à l'oral : la connexion, l'appel du microservice, l'écriture en base, l'exécution de la Function (onglet *Monitor* de la
 Function App), les ressources dans le groupe `rg-beacom-prod`, et les journaux (*Log stream* des App Service).
 Prévoyez des captures d'écran ou une vidéo de secours.
+
+## 7. Observabilité (voir `06-observabilite.md`)
+
+Commandes à lancer une fois les ressources créées (non exécutées par l'équipe de développement : à valider avant).
+
+```bash
+# Espace Log Analytics (rétention 30 jours) et Application Insights adossé
+az monitor log-analytics workspace create -g $RG -n log-beacom --location francecentral --retention-time 30
+WS=$(az monitor log-analytics workspace show -g $RG -n log-beacom --query id -o tsv)
+az monitor app-insights component create -g $RG --app appi-beacom -l francecentral --workspace $WS
+APPI=$(az monitor app-insights component show -g $RG --app appi-beacom --query id -o tsv)
+CS=$(az monitor app-insights component show -g $RG --app appi-beacom --query connectionString -o tsv)
+
+# Activation dans les 4 API, le frontend et la Function
+for a in utilisateurs etablissements collecte analyses frontend; do
+  az webapp config appsettings set -g $RG -n app-beacom-$a --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$CS"
+done
+az functionapp config appsettings set -g $RG -n func-beacom-nlp --settings APPLICATIONINSIGHTS_CONNECTION_STRING="$CS"
+
+# Groupe d'actions : e-mail à l'équipe
+az monitor action-group create -g $RG -n ag-beacom --short-name beacom --action email equipe <EMAIL_EQUIPE>
+AG=$(az monitor action-group show -g $RG -n ag-beacom --query id -o tsv)
+
+# Tests de disponibilité sur /health (toutes les 5 min, France Central + Europe de l'Ouest)
+for a in utilisateurs etablissements collecte analyses; do
+  az monitor app-insights web-test create -g $RG -n dispo-$a -l francecentral --web-test-kind standard \
+    --defined-web-test-name dispo-$a --frequency 300 --timeout 30 --enabled true --retry-enabled false \
+    --locations Id=emea-fr-pra-edge --locations Id=emea-nl-ams-azr \
+    --request-url https://app-beacom-$a.azurewebsites.net/health --expected-status-code 200 \
+    --tags "hidden-link:$APPI=Resource"
+done
+
+# Alerte 1 : /health échoue 2 fois de suite
+az monitor scheduled-query create -g $RG -n alerte-indisponible --scopes $APPI --severity 1 \
+  --evaluation-frequency 5m --window-size 10m --action-groups $AG \
+  --condition "count 'Q1' >= 2" \
+  --condition-query Q1="availabilityResults | where success == false | summarize n = count() by name | where n >= 2"
+
+# Alerte 2 : plus de 5 % de 5xx sur 10 minutes (au moins 20 requêtes)
+az monitor scheduled-query create -g $RG -n alerte-5xx --scopes $APPI --severity 2 \
+  --evaluation-frequency 5m --window-size 10m --action-groups $AG \
+  --condition "count 'Q2' > 0" \
+  --condition-query Q2="requests | summarize total = count(), e = countif(toint(resultCode) >= 500) by cloud_RoleName | where total >= 20 and 100.0 * e / total > 5"
+
+# Alerte 3 : au moins 1 message en poison queue
+az monitor scheduled-query create -g $RG -n alerte-poison --scopes $APPI --severity 2 \
+  --evaluation-frequency 5m --window-size 5m --action-groups $AG \
+  --condition "count 'Q3' > 0" --condition-query Q3="traces | where message has 'avis-a-analyser-poison'"
+
+# Alerte 4 : 80 % du budget mensuel (montant : voir 04-finops.md)
+SUB=$(az account show --query id -o tsv)
+az rest --method put \
+  --url "https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Consumption/budgets/budget-beacom?api-version=2023-05-01" \
+  --body '{"properties":{"category":"Cost","amount":<BUDGET_USD>,"timeGrain":"Monthly",
+    "timePeriod":{"startDate":"<AAAA-MM-01>"},
+    "notifications":{"reel-80":{"enabled":true,"operator":"GreaterThanOrEqualTo","threshold":80,
+      "thresholdType":"Actual","contactEmails":["<EMAIL_EQUIPE>"]}}}}'
+```

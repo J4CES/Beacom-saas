@@ -45,6 +45,7 @@ Chaque service est propriétaire de sa base et l'expose par son API.
 | [docs/03-securite.md](docs/03-securite.md) | Analyse de sécurité |
 | [docs/04-finops.md](docs/04-finops.md) | Estimation des coûts et leviers d'économie |
 | [docs/05-deploiement.md](docs/05-deploiement.md) | Déploiement Azure, GitHub Actions, scénario de démonstration |
+| [docs/06-observabilite.md](docs/06-observabilite.md) | Journaux, disponibilité, performance, alertes, diagnostic (KQL) |
 
 ## Démarrage local
 
